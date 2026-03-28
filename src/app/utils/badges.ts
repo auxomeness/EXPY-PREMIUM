@@ -1,4 +1,6 @@
-import type { UserData, Expense } from "../App";
+import type { Expense, UserData } from "../App";
+import { formatUserCurrency } from "./currency";
+import { countActiveDays, filterExpensesForAnalysis } from "./finance";
 
 export type BadgeLevel = "bronze" | "silver" | "gold";
 
@@ -43,10 +45,9 @@ const CATEGORY_BADGES = [
 
 // Helper function to check if user has overspent in a period
 function hasOverspentInPeriod(userData: UserData, startDate: Date, endDate: Date): boolean {
-  // Get expenses in the period
-  const periodExpenses = userData.expenses.filter(expense => {
-    const expenseDate = new Date(expense.date);
-    return expenseDate >= startDate && expenseDate <= endDate;
+  const periodExpenses = filterExpensesForAnalysis(userData.expenses, userData.computationExemptions, {
+    start: startDate,
+    end: endDate,
   });
   
   // Calculate total spent
@@ -61,15 +62,15 @@ function hasOverspentInPeriod(userData: UserData, startDate: Date, endDate: Date
 }
 
 function calculatePeriodBudget(userData: UserData, startDate: Date, endDate: Date): number {
-  const days = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+  const activeDays = countActiveDays(startDate, endDate, userData.computationExemptions);
   
   switch (userData.budgetPeriod) {
     case "daily":
-      return userData.budgetAmount * days;
+      return userData.budgetAmount * activeDays;
     case "weekly":
-      return userData.budgetAmount * Math.ceil(days / 7);
+      return userData.budgetAmount * Math.ceil(activeDays / 7);
     case "monthly":
-      return userData.budgetAmount * Math.ceil(days / 30);
+      return userData.budgetAmount * Math.ceil(activeDays / 30);
     default:
       return 0;
   }
@@ -94,7 +95,8 @@ export function calculateBadges(userData: UserData): Badge[] {
   const badges: Badge[] = [];
   const currentStreak = userData.currentStreak || 0;
   const totalSavings = userData.savings || 0;
-  const categoryTotals = getCategoryTotals(userData.expenses);
+  const analysisExpenses = filterExpensesForAnalysis(userData.expenses, userData.computationExemptions);
+  const categoryTotals = getCategoryTotals(analysisExpenses);
   
   // Streak badges
   STREAK_BADGES.forEach((badge, index) => {
@@ -121,7 +123,7 @@ export function calculateBadges(userData: UserData): Badge[] {
     badges.push({
       id: `savings-${index}`,
       name: badge.name,
-      description: badge.description,
+      description: `Saved ${formatUserCurrency(badge.amount, userData.currencySettings)}`,
       level: badge.level,
       icon: "💰",
       earned,
@@ -191,7 +193,7 @@ export function calculateBadges(userData: UserData): Badge[] {
     badges.push({
       id: `category-${index}`,
       name: badge.name,
-      description: badge.description,
+      description: `Spent ${formatUserCurrency(badge.amount, userData.currencySettings)} in one category`,
       level: badge.level,
       icon: "🏆",
       earned,

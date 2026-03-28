@@ -7,11 +7,37 @@ import { Dashboard } from "./components/Dashboard";
 import { ExpenseHistory } from "./components/ExpenseHistory";
 import { Savings } from "./components/Savings";
 import { Settings } from "./components/Settings";
-import { Home, History, PiggyBank, SettingsIcon } from "lucide-react";
+import { Wallets } from "./components/Wallets";
+import { Home, History, PiggyBank, SettingsIcon, Wallet, type LucideIcon } from "lucide-react";
 import { Toaster } from "./components/ui/sonner";
 import { migrateUserData } from "./utils/migration";
 import { scheduleNotificationCheck } from "./utils/notifications";
 import { createDemoAccount } from "./utils/createDemoAccount";
+import { refreshUserCurrencyRatesIfNeeded } from "./utils/currency";
+
+export type SupportedCurrency =
+  | "PHP"
+  | "USD"
+  | "EUR"
+  | "CNY"
+  | "GBP"
+  | "JPY"
+  | "CAD"
+  | "AUD"
+  | "HKD"
+  | "SGD"
+  | "CHF"
+  | "INR"
+  | "MXN"
+  | "BRL"
+  | "SEK"
+  | "PLN"
+  | "KRW"
+  | "TRY"
+  | "THB"
+  | "NOK"
+  | "MYR"
+  | "AED";
 
 export type Expense = {
   id: string;
@@ -31,6 +57,54 @@ export type Transaction = {
 };
 
 export type BudgetPeriod = "daily" | "weekly" | "monthly";
+
+export type CurrencySettings = {
+  baseCurrency: SupportedCurrency;
+  preferredCurrency: SupportedCurrency;
+  exchangeRates: Partial<Record<SupportedCurrency, number>>;
+  manualExchangeRates: Partial<Record<SupportedCurrency, number>>;
+  lastUpdated: string;
+  provider: string;
+  source: "seed" | "api" | "manual";
+};
+
+export type ComputationExemption = {
+  id: string;
+  name: string;
+  date: string;
+  repeat: "none" | "weekly" | "monthly" | "yearly";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomWallet = {
+  id: string;
+  name: string;
+  balance: number;
+  initialBalance: number;
+  expenses: Expense[];
+  transactions: Transaction[];
+  thresholdPercentage: number;
+  autoBudgetEnabled: boolean;
+  budgetPeriod: BudgetPeriod;
+  budgetAmount: number;
+  lastBudgetReset: string;
+  archived: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WishlistItem = {
+  id: string;
+  name: string;
+  targetCost: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ActiveAccount =
+  | { kind: "main" }
+  | { kind: "wallet"; walletId: string };
 
 export type UserData = {
   username: string;
@@ -59,14 +133,31 @@ export type UserData = {
     favoriteColor: string;
     secretCode: string;
   };
+  currencySettings: CurrencySettings;
+  computationExemptions: ComputationExemption[];
+  wallets: CustomWallet[];
+  savingsWishlist: WishlistItem[];
 };
+
+const APP_TABS: Array<{
+  id: "home" | "history" | "wallets" | "savings" | "settings";
+  label: string;
+  icon: LucideIcon;
+}> = [
+  { id: "home", label: "Home", icon: Home },
+  { id: "history", label: "History", icon: History },
+  { id: "wallets", label: "Wallets", icon: Wallet },
+  { id: "savings", label: "Savings", icon: PiggyBank },
+  { id: "settings", label: "Settings", icon: SettingsIcon },
+];
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [onboardingUser, setOnboardingUser] = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
-  const [activeTab, setActiveTab] = useState<"home" | "history" | "savings" | "settings">("home");
+  const [activeTab, setActiveTab] = useState<"home" | "history" | "wallets" | "savings" | "settings">("home");
   const [securityQuestionsUser, setSecurityQuestionsUser] = useState<{ username: string; password: string } | null>(null);
+  const [activeAccount, setActiveAccount] = useState<ActiveAccount>({ kind: "main" });
 
   useEffect(() => {
     // Migrate existing user data to new schema
@@ -92,6 +183,12 @@ export default function App() {
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    void refreshUserCurrencyRatesIfNeeded(currentUser);
+  }, [currentUser]);
 
   const updateStreak = (username: string) => {
     const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
@@ -180,6 +277,12 @@ export default function App() {
     setCurrentUser(null);
     localStorage.removeItem("expy_current_user");
     setActiveTab("home");
+    setActiveAccount({ kind: "main" });
+  };
+
+  const handleOpenWallet = (walletId: string | null) => {
+    setActiveAccount(walletId ? { kind: "wallet", walletId } : { kind: "main" });
+    setActiveTab("wallets");
   };
 
   if (showWelcome) {
@@ -224,56 +327,59 @@ export default function App() {
 
   return (
     <>
-      <div className="min-h-screen bg-background flex flex-col max-w-md mx-auto">
-        {/* Main Content */}
-        <div className="flex-1 overflow-auto pb-20">
-          {activeTab === "home" && <Dashboard username={currentUser} />}
+      <div className="mobile-shell mobile-canvas">
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-background via-background/90 to-transparent" />
+
+        <div className="relative flex-1 overflow-x-hidden overflow-y-auto pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
+          {activeTab === "home" && (
+            <Dashboard username={currentUser} />
+          )}
           {activeTab === "history" && <ExpenseHistory username={currentUser} />}
+          {activeTab === "wallets" && (
+            <Wallets
+              username={currentUser}
+              activeAccount={activeAccount}
+              onActiveAccountChange={setActiveAccount}
+            />
+          )}
           {activeTab === "savings" && <Savings username={currentUser} />}
-          {activeTab === "settings" && <Settings username={currentUser} onLogout={handleLogout} />}
+          {activeTab === "settings" && (
+            <Settings
+              username={currentUser}
+              onLogout={handleLogout}
+              activeAccount={activeAccount}
+              onOpenWallet={handleOpenWallet}
+            />
+          )}
         </div>
 
-        {/* Bottom Navigation */}
-        <nav className="fixed bottom-0 left-0 right-0 max-w-md mx-auto bg-card border-t border-border">
-          <div className="grid grid-cols-4 h-16">
-            <button
-              onClick={() => setActiveTab("home")}
-              className={`flex flex-col items-center justify-center gap-1 ${
-                activeTab === "home" ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
-              <Home className="w-5 h-5" />
-              <span className="text-xs">Home</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("history")}
-              className={`flex flex-col items-center justify-center gap-1 ${
-                activeTab === "history" ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
-              <History className="w-5 h-5" />
-              <span className="text-xs">History</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("savings")}
-              className={`flex flex-col items-center justify-center gap-1 ${
-                activeTab === "savings" ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
-              <PiggyBank className="w-5 h-5" />
-              <span className="text-xs">Savings</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("settings")}
-              className={`flex flex-col items-center justify-center gap-1 ${
-                activeTab === "settings" ? "text-primary" : "text-muted-foreground"
-              }`}
-            >
-              <SettingsIcon className="w-5 h-5" />
-              <span className="text-xs">Settings</span>
-            </button>
-          </div>
-        </nav>
+        <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-[430px] justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <nav className="pointer-events-auto w-full rounded-[28px] border border-border/70 bg-card/95 px-2 py-2 shadow-[0_24px_48px_-28px_rgba(15,23,42,0.42)] backdrop-blur-[8px] dark:bg-card/92">
+            <div className="grid grid-cols-5 gap-1">
+              {APP_TABS.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex min-h-[58px] flex-col items-center justify-center gap-1 rounded-[22px] px-1.5 transition-all duration-200 active:scale-[0.985] ${
+                      isActive
+                        ? "bg-primary text-primary-foreground shadow-[0_14px_28px_-20px_rgba(3,2,19,0.95)] ring-1 ring-primary-foreground/10"
+                        : "text-muted-foreground/90 hover:bg-muted/60 hover:text-foreground"
+                    }`}
+                  >
+                    <Icon className={`h-[18px] w-[18px] transition-transform duration-200 ${isActive ? "scale-100" : "scale-[0.96] opacity-85"}`} />
+                    <span className={`text-[11px] font-semibold tracking-[0.01em] transition-opacity duration-200 ${isActive ? "" : "opacity-80"}`}>
+                      {tab.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </nav>
+        </div>
       </div>
       <Toaster />
     </>

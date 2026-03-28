@@ -1,17 +1,50 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
-import { Label } from "./ui/label";
-import { Input } from "./ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Separator } from "./ui/separator";
-import { LogOut, Bell, Trash2, Moon, Sun, Tags, UserCircle, Lock, AtSign } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  AtSign,
+  Bell,
+  CalendarRange,
+  Coins,
+  Lock,
+  LogOut,
+  Moon,
+  RefreshCcw,
+  Settings2,
+  Sun,
+  Tags,
+  Trash2,
+  UserCircle,
+  Wallet,
+} from "lucide-react";
 import { toast } from "sonner";
-import { formatCurrency } from "../utils/currency";
-import { ManageCategoriesDialog } from "./ManageCategoriesDialog";
+import type { ActiveAccount, BudgetPeriod, SupportedCurrency, UserData } from "../App";
+import { isDateExempt } from "../utils/finance";
+import {
+  SUPPORTED_CURRENCIES,
+  applyExchangeRateUpdate,
+  buildManualCurrencyOverride,
+  clearManualCurrencyOverride,
+  convertFromBaseCurrency,
+  convertToBaseCurrency,
+  fetchExchangeRates,
+  formatUserCurrency,
+  getEffectiveExchangeRate,
+} from "../utils/currency";
+import {
+  createDefaultUserData,
+  getActiveWallets,
+  getStoredUsers,
+  getUserData,
+  saveUserData,
+  subscribeToUserData,
+  updateUserData,
+  writeStoredUsers,
+} from "../utils/userData";
+import { ExemptionManagerDialog } from "./ExemptionManagerDialog";
 import { FloatingLabelInput } from "./FloatingLabelInput";
 import { LoadingScreen } from "./LoadingScreen";
-import type { BudgetPeriod } from "../App";
+import { ManageCategoriesDialog } from "./ManageCategoriesDialog";
+import { WalletManagerDialog } from "./WalletManagerDialog";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -23,202 +56,263 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "./ui/alert-dialog";
+import { Badge } from "./ui/badge";
+import { Button } from "./ui/button";
+import { Input } from "./ui/input";
+import { Label } from "./ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Separator } from "./ui/separator";
+import { Switch } from "./ui/switch";
+import { cn } from "./ui/utils";
 
 type SettingsProps = {
   username: string;
   onLogout: () => void;
+  activeAccount: ActiveAccount;
+  onOpenWallet: (walletId: string | null) => void;
 };
 
-export function Settings({ username, onLogout }: SettingsProps) {
+type SettingsSectionProps = {
+  value: string;
+  title: string;
+  subtitle: string;
+  badge?: ReactNode;
+  tone?: "default" | "danger";
+  children: ReactNode;
+};
+
+function SettingsSection({ value, title, subtitle, badge, tone = "default", children }: SettingsSectionProps) {
+  return (
+    <AccordionItem
+      value={value}
+      className={cn(
+        "rounded-[24px] border border-border/70 bg-card/95 px-5 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.35)]",
+        tone === "danger" && "border-destructive/40",
+      )}
+    >
+      <AccordionTrigger className="py-5 text-left hover:no-underline">
+        <div className="flex min-w-0 flex-1 items-start justify-between gap-3 pr-2">
+          <div className="min-w-0">
+            <p className="text-[1.02rem] font-semibold tracking-[-0.015em]">{title}</p>
+            <p className="mt-1 text-sm leading-5 text-muted-foreground">{subtitle}</p>
+          </div>
+          {badge}
+        </div>
+      </AccordionTrigger>
+      <AccordionContent className="pb-5">{children}</AccordionContent>
+    </AccordionItem>
+  );
+}
+
+export function Settings({ username, onLogout, activeAccount, onOpenWallet }: SettingsProps) {
+  const [userData, setUserData] = useState<UserData>(createDefaultUserData(username));
   const [thresholdPercentage, setThresholdPercentage] = useState("20");
-  const [balance, setBalance] = useState(0);
-  const [initialBalance, setInitialBalance] = useState(0);
-  const [isDarkMode, setIsDarkMode] = useState(false);
-  const [customCategories, setCustomCategories] = useState<string[]>([]);
-  const [showManageCategories, setShowManageCategories] = useState(false);
-  const [budgetPeriod, setBudgetPeriod] = useState<BudgetPeriod>("monthly");
-  const [budgetAmount, setBudgetAmount] = useState("");
+  const [budgetAmount, setBudgetAmount] = useState("0.00");
   const [displayName, setDisplayName] = useState("");
   const [newUsername, setNewUsername] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [dayEndTime, setDayEndTime] = useState("22:00");
+  const [selectedWalletBudgetId, setSelectedWalletBudgetId] = useState("");
+  const [walletBudgetAmount, setWalletBudgetAmount] = useState("0.00");
+  const [walletBudgetPeriod, setWalletBudgetPeriod] = useState<BudgetPeriod>("monthly");
+  const [walletAutoBudgetEnabled, setWalletAutoBudgetEnabled] = useState(false);
+  const [manualRate, setManualRate] = useState("");
+  const [showManageCategories, setShowManageCategories] = useState(false);
+  const [showExemptions, setShowExemptions] = useState(false);
+  const [showWalletManager, setShowWalletManager] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
-  const [dayEndTimeSaved, setDayEndTimeSaved] = useState(false);
-  const [thresholdSaved, setThresholdSaved] = useState(false);
-  const [budgetAmountSaved, setBudgetAmountSaved] = useState(false);
-  const [displayNameSaved, setDisplayNameSaved] = useState(false);
-  const [passwordSaved, setPasswordSaved] = useState(false);
   const [isChangingUsername, setIsChangingUsername] = useState(false);
+  const [isRefreshingRates, setIsRefreshingRates] = useState(false);
 
   useEffect(() => {
-    loadSettings();
-    
-    // Load dark mode preference
+    const currentUserData = getUserData(username) ?? createDefaultUserData(username);
+    setUserData(currentUserData);
+
+    return subscribeToUserData(username, (nextUserData) => {
+      setUserData(nextUserData);
+    });
+  }, [username]);
+
+  useEffect(() => {
+    setThresholdPercentage(userData.thresholdPercentage.toString());
+    setBudgetAmount(convertFromBaseCurrency(userData.budgetAmount, userData.currencySettings).toFixed(2));
+    setDisplayName(userData.displayName || "");
+    setDayEndTime(userData.dayEndTime || "22:00");
+
+    const preferredCurrency = userData.currencySettings.preferredCurrency;
+    const rate =
+      userData.currencySettings.manualExchangeRates[preferredCurrency] ??
+      userData.currencySettings.exchangeRates[preferredCurrency] ??
+      1;
+    setManualRate(rate.toFixed(4));
+  }, [userData]);
+
+  useEffect(() => {
     const darkMode = localStorage.getItem("expy_dark_mode") === "true";
     setIsDarkMode(darkMode);
     if (darkMode) {
       document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
     }
 
-    // Check notification permission
     if ("Notification" in window) {
       setNotificationPermission(Notification.permission);
     }
-  }, [username]);
+  }, []);
 
-  const loadSettings = () => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    if (users[username]) {
-      setThresholdPercentage(users[username].thresholdPercentage.toString());
-      setBalance(users[username].balance || 0);
-      setInitialBalance(users[username].initialBalance || 0);
-      setCustomCategories(users[username].customCategories || []);
-      setBudgetPeriod(users[username].budgetPeriod || "monthly");
-      setBudgetAmount((users[username].budgetAmount || 0).toString());
-      setDisplayName(users[username].displayName || "");
-      setNotificationsEnabled(users[username].notificationsEnabled || false);
-      setDayEndTime(users[username].dayEndTime || "22:00");
-    }
-  };
+  const activeWallets = useMemo(() => getActiveWallets(userData), [userData]);
+  const selectedWalletForBudget = useMemo(
+    () => activeWallets.find((wallet) => wallet.id === selectedWalletBudgetId) ?? null,
+    [activeWallets, selectedWalletBudgetId],
+  );
+  const thresholdAmount =
+    (Number.parseFloat(thresholdPercentage || "0") / 100) * userData.initialBalance;
+  const preferredCurrency = userData.currencySettings.preferredCurrency;
+  const baseCurrency = userData.currencySettings.baseCurrency;
+  const activeAccountLabel =
+    activeAccount.kind === "main"
+      ? "Main Balance"
+      : activeWallets.find((wallet) => wallet.id === activeAccount.walletId)?.name || "Archived Wallet";
+  const liveRate = userData.currencySettings.exchangeRates[preferredCurrency];
+  const manualRateOverride = userData.currencySettings.manualExchangeRates[preferredCurrency];
 
-  const handleUpdateCategories = (categories: string[]) => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username].customCategories = categories;
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    setCustomCategories(categories);
-  };
-
-  const handleBudgetPeriodChange = (period: BudgetPeriod) => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username].budgetPeriod = period;
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    setBudgetPeriod(period);
-    toast.success(`Budget period updated to ${period}`);
-  };
-
-  const saveThreshold = () => {
-    const threshold = parseFloat(thresholdPercentage);
-    
-    if (isNaN(threshold) || threshold < 0 || threshold > 100) {
-      toast.error("Please enter a valid percentage (0-100)");
+  useEffect(() => {
+    if (activeWallets.length === 0) {
+      setSelectedWalletBudgetId("");
       return;
     }
 
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username].thresholdPercentage = threshold;
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    toast.success("Threshold updated successfully");
-    setThresholdSaved(true);
-    
-    setTimeout(() => {
-      setThresholdSaved(false);
-    }, 2000);
+    const preferredWalletId =
+      activeAccount.kind === "wallet" && activeWallets.some((wallet) => wallet.id === activeAccount.walletId)
+        ? activeAccount.walletId
+        : activeWallets[0].id;
+
+    if (!selectedWalletBudgetId || !activeWallets.some((wallet) => wallet.id === selectedWalletBudgetId)) {
+      setSelectedWalletBudgetId(preferredWalletId);
+    }
+  }, [activeAccount, activeWallets, selectedWalletBudgetId]);
+
+  useEffect(() => {
+    if (!selectedWalletForBudget) {
+      setWalletAutoBudgetEnabled(false);
+      setWalletBudgetAmount("0.00");
+      setWalletBudgetPeriod("monthly");
+      return;
+    }
+
+    setWalletAutoBudgetEnabled(selectedWalletForBudget.autoBudgetEnabled);
+    setWalletBudgetAmount(convertFromBaseCurrency(selectedWalletForBudget.budgetAmount, userData.currencySettings).toFixed(2));
+    setWalletBudgetPeriod(selectedWalletForBudget.budgetPeriod);
+  }, [selectedWalletForBudget, userData.currencySettings]);
+
+  const saveThreshold = () => {
+    const threshold = Number.parseFloat(thresholdPercentage);
+
+    if (Number.isNaN(threshold) || threshold < 0 || threshold > 100) {
+      toast.error("Please enter a valid percentage between 0 and 100");
+      return;
+    }
+
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      thresholdPercentage: threshold,
+    }));
+    toast.success("Low-balance alert updated");
   };
 
   const saveBudgetAmount = () => {
-    const amount = parseFloat(budgetAmount);
-    
-    if (isNaN(amount) || amount < 0) {
-      toast.error("Please enter a valid amount");
+    const amount = Number.parseFloat(budgetAmount);
+
+    if (Number.isNaN(amount) || amount < 0) {
+      toast.error("Please enter a valid auto budget amount");
       return;
     }
 
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username].budgetAmount = amount;
-    users[username].lastBudgetReset = new Date().toISOString();
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    toast.success("Auto budget amount updated successfully");
-    setBudgetAmountSaved(true);
-    
-    setTimeout(() => {
-      setBudgetAmountSaved(false);
-    }, 2000);
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      budgetAmount: convertToBaseCurrency(amount, currentUserData.currencySettings),
+      lastBudgetReset: new Date().toISOString(),
+    }));
+    toast.success("Auto budget amount updated");
   };
 
-  const handleClearHistory = () => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username].expenses = [];
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    toast.success("Expense history cleared");
-    loadSettings();
+  const handleBudgetPeriodChange = (period: BudgetPeriod) => {
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      budgetPeriod: period,
+    }));
+    toast.success(`Budget period updated to ${period}`);
   };
 
-  const handleResetBalance = () => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username].balance = 0;
-    users[username].initialBalance = 0;
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    toast.success("Balance reset");
-    loadSettings();
+  const handleUpdateCategories = (categories: string[]) => {
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      customCategories: categories,
+    }));
   };
-
-  const thresholdAmount = (parseFloat(thresholdPercentage) / 100) * initialBalance;
-
-
 
   const toggleDarkMode = () => {
-    const newDarkMode = !isDarkMode;
-    setIsDarkMode(newDarkMode);
-    localStorage.setItem("expy_dark_mode", newDarkMode.toString());
-    
-    if (newDarkMode) {
+    const nextDarkMode = !isDarkMode;
+    setIsDarkMode(nextDarkMode);
+    localStorage.setItem("expy_dark_mode", String(nextDarkMode));
+
+    if (nextDarkMode) {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
     }
-    
-    toast.success(`${newDarkMode ? "Dark" : "Light"} mode enabled`);
+
+    toast.success(`${nextDarkMode ? "Dark" : "Light"} mode enabled`);
   };
 
   const handleDisplayNameChange = () => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username].displayName = displayName.trim();
-    localStorage.setItem("expy_users", JSON.stringify(users));
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      displayName: displayName.trim(),
+    }));
     toast.success("Display name updated");
-    setDisplayNameSaved(true);
-    
-    setTimeout(() => {
-      setDisplayNameSaved(false);
-    }, 2000);
-    
-    loadSettings();
   };
 
   const handleUsernameChange = () => {
-    if (!newUsername.trim()) {
+    const trimmedUsername = newUsername.trim();
+
+    if (!trimmedUsername) {
       toast.error("Username cannot be empty");
       return;
     }
 
-    if (newUsername.length > 10) {
+    if (trimmedUsername.length > 10) {
       toast.error("Username must be 10 characters or less");
       return;
     }
 
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    
-    if (users[newUsername]) {
+    const users = getStoredUsers();
+    if (users[trimmedUsername]) {
       toast.error("Username already exists");
       return;
     }
 
-    // Copy user data to new username
-    users[newUsername] = { ...users[username] };
+    const currentUserData = users[username];
+    if (!currentUserData) {
+      toast.error("Unable to load the current account");
+      return;
+    }
+
+    users[trimmedUsername] = {
+      ...currentUserData,
+      username: trimmedUsername,
+    };
     delete users[username];
-    
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    localStorage.setItem("expy_current_user", newUsername);
-    
+    writeStoredUsers(users);
+    localStorage.setItem("expy_current_user", trimmedUsername);
+
     toast.success("Username changed successfully");
-    
-    // Show loading screen before reload
     setIsChangingUsername(true);
-    
-    // Reload the page after a short delay to show loading screen
-    setTimeout(() => {
+    window.setTimeout(() => {
       window.location.reload();
     }, 500);
   };
@@ -229,15 +323,13 @@ export function Settings({ username, onLogout }: SettingsProps) {
       return;
     }
 
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    
-    if (users[username].password !== currentPassword) {
+    if (userData.password !== currentPassword) {
       toast.error("Current password is incorrect");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      toast.error("New passwords don't match");
+      toast.error("New passwords do not match");
       return;
     }
 
@@ -246,114 +338,249 @@ export function Settings({ username, onLogout }: SettingsProps) {
       return;
     }
 
-    // Check for at least one capital letter, one number, and one special character
-    const hasCapital = /[A-Z]/.test(newPassword);
-    const hasNumber = /[0-9]/.test(newPassword);
-    const hasSpecial = /[!@#$%^&*(),.?":{}|<>]/.test(newPassword);
-
-    if (!hasCapital) {
+    if (!/[A-Z]/.test(newPassword)) {
       toast.error("Password must contain at least one capital letter");
       return;
     }
 
-    if (!hasNumber) {
+    if (!/[0-9]/.test(newPassword)) {
       toast.error("Password must contain at least one number");
       return;
     }
 
-    if (!hasSpecial) {
+    if (!/[!@#$%^&*(),.?\":{}|<>]/.test(newPassword)) {
       toast.error("Password must contain at least one special character");
       return;
     }
 
-    users[username].password = newPassword;
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      password: newPassword,
+    }));
+
     setCurrentPassword("");
     setNewPassword("");
     setConfirmPassword("");
-    
     toast.success("Password changed successfully");
-    setPasswordSaved(true);
-    
-    setTimeout(() => {
-      setPasswordSaved(false);
-    }, 2000);
-  };
-
-  const handleDeactivateAccount = () => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username].isActive = false;
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    toast.success("Account deactivated");
-    onLogout();
-  };
-
-  const handleDeleteAccount = () => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    delete users[username];
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    toast.success("Account deleted permanently");
-    onLogout();
   };
 
   const requestNotificationPermission = async () => {
     if (!("Notification" in window)) {
       toast.error("Notifications are not supported in this browser");
-      return;
+      return false;
     }
 
     try {
       const permission = await Notification.requestPermission();
       setNotificationPermission(permission);
-      
       if (permission === "granted") {
         toast.success("Notification permission granted");
-      } else {
-        toast.error("Notification permission denied");
+        return true;
       }
-    } catch (error) {
+
+      toast.error("Notification permission denied");
+      return false;
+    } catch {
       toast.error("Failed to request notification permission");
+      return false;
     }
   };
 
-  const toggleNotifications = async () => {
-    if (!notificationsEnabled) {
-      // Enabling notifications
-      if (notificationPermission !== "granted") {
-        await requestNotificationPermission();
-        if (Notification.permission !== "granted") {
-          return;
-        }
+  const toggleNotifications = async (checked: boolean) => {
+    if (checked && notificationPermission !== "granted") {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        return;
       }
-      
-      const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-      users[username].notificationsEnabled = true;
-      users[username].dayEndTime = dayEndTime;
-      localStorage.setItem("expy_users", JSON.stringify(users));
-      setNotificationsEnabled(true);
-      toast.success("Daily notifications enabled");
-    } else {
-      // Disabling notifications
-      const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-      users[username].notificationsEnabled = false;
-      localStorage.setItem("expy_users", JSON.stringify(users));
-      setNotificationsEnabled(false);
-      toast.success("Daily notifications disabled");
     }
+
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      notificationsEnabled: checked,
+      dayEndTime,
+    }));
+    toast.success(`Daily notifications ${checked ? "enabled" : "disabled"}`);
   };
 
   const saveDayEndTime = () => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username].dayEndTime = dayEndTime;
-    localStorage.setItem("expy_users", JSON.stringify(users));
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      dayEndTime,
+    }));
     toast.success("Day end time updated");
-    setDayEndTimeSaved(true);
-    
-    // Reset the saved state after 2 seconds
-    setTimeout(() => {
-      setDayEndTimeSaved(false);
-    }, 2000);
+  };
+
+  const refreshRates = async (sourceUserData = userData) => {
+    setIsRefreshingRates(true);
+
+    try {
+      const exchangeRatePayload = await fetchExchangeRates(baseCurrency);
+      const nextUserData = {
+        ...sourceUserData,
+        currencySettings: applyExchangeRateUpdate(sourceUserData.currencySettings, exchangeRatePayload),
+      };
+      saveUserData(username, nextUserData);
+      toast.success("Exchange rates refreshed");
+    } catch {
+      toast.error("Unable to refresh exchange rates right now");
+    } finally {
+      setIsRefreshingRates(false);
+    }
+  };
+
+  const handleCurrencyChange = async (currencyCode: SupportedCurrency) => {
+    const nextSettings = {
+      ...userData.currencySettings,
+      preferredCurrency: currencyCode,
+    };
+
+    const nextUserData = {
+      ...userData,
+      currencySettings: nextSettings,
+    };
+    saveUserData(username, nextUserData);
+
+    if (currencyCode !== baseCurrency) {
+      await refreshRates(nextUserData);
+    } else {
+      toast.success("App currency updated");
+    }
+  };
+
+  const handleSaveManualRate = () => {
+    if (preferredCurrency === baseCurrency) {
+      toast.error("Manual conversion is only needed when app currency differs from the base currency");
+      return;
+    }
+
+    const parsedRate = Number.parseFloat(manualRate);
+
+    if (Number.isNaN(parsedRate) || parsedRate <= 0) {
+      toast.error("Please enter a valid manual exchange rate");
+      return;
+    }
+
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      currencySettings: buildManualCurrencyOverride(
+        currentUserData.currencySettings,
+        preferredCurrency,
+        parsedRate,
+      ),
+    }));
+    toast.success("Manual exchange rate saved");
+  };
+
+  const handleClearManualRate = () => {
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      currencySettings: clearManualCurrencyOverride(currentUserData.currencySettings, preferredCurrency),
+    }));
+    toast.success("Manual override cleared");
+  };
+
+  const handleClearHistory = () => {
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      expenses: [],
+      transactions: currentUserData.transactions.filter((transaction) => transaction.type !== "expense"),
+    }));
+    toast.success("Main expense history cleared");
+  };
+
+  const handleResetBalance = () => {
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      balance: 0,
+      initialBalance: 0,
+    }));
+    toast.success("Main balance reset");
+  };
+
+  const handleDeactivateAccount = () => {
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      isActive: false,
+    }));
+    toast.success("Account deactivated");
+    onLogout();
+  };
+
+  const handleDeleteAccount = () => {
+    const users = getStoredUsers();
+    delete users[username];
+    writeStoredUsers(users);
+    toast.success("Account deleted permanently");
+    onLogout();
+  };
+
+  const handleExcludeToday = () => {
+    if (isDateExempt(new Date(), userData.computationExemptions)) {
+      toast.message("Today is already excluded");
+      return;
+    }
+
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      computationExemptions: [
+        ...currentUserData.computationExemptions,
+        {
+          id: `exemption-today-${Date.now()}`,
+          name: "Exclude Today",
+          date: new Date().toISOString(),
+          repeat: "none",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    }));
+    toast.success("Today excluded from automatic computations");
+  };
+
+  const handleWalletBudgetToggle = (enabled: boolean) => {
+    if (!selectedWalletForBudget) return;
+
+    setWalletAutoBudgetEnabled(enabled);
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      wallets: currentUserData.wallets.map((wallet) =>
+        wallet.id === selectedWalletForBudget.id
+          ? {
+              ...wallet,
+              autoBudgetEnabled: enabled,
+              updatedAt: new Date().toISOString(),
+            }
+          : wallet,
+      ),
+    }));
+    toast.success(enabled ? `${selectedWalletForBudget.name} auto budget enabled` : `${selectedWalletForBudget.name} auto budget turned off`);
+  };
+
+  const handleSaveWalletBudget = () => {
+    if (!selectedWalletForBudget) return;
+
+    const parsedBudgetAmount = Number.parseFloat(walletBudgetAmount);
+
+    if (Number.isNaN(parsedBudgetAmount) || parsedBudgetAmount < 0) {
+      toast.error("Please enter a valid wallet auto budget amount");
+      return;
+    }
+
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      wallets: currentUserData.wallets.map((wallet) =>
+        wallet.id === selectedWalletForBudget.id
+          ? {
+              ...wallet,
+              budgetAmount: convertToBaseCurrency(parsedBudgetAmount, currentUserData.currencySettings),
+              budgetPeriod: walletBudgetPeriod,
+              autoBudgetEnabled: walletAutoBudgetEnabled,
+              updatedAt: new Date().toISOString(),
+            }
+          : wallet,
+      ),
+    }));
+    toast.success(`${selectedWalletForBudget.name} budget settings saved`);
   };
 
   if (isChangingUsername) {
@@ -361,378 +588,515 @@ export function Settings({ username, onLogout }: SettingsProps) {
   }
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="pt-2">
-        <h1>Settings</h1>
-        <p className="text-muted-foreground">Manage your account preferences</p>
+    <div className="page-shell">
+      <div className="page-header">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Preferences</p>
+          <h1 className="page-title flex items-center gap-2">
+            <Settings2 className="h-5 w-5" />
+            Settings
+          </h1>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Appearance</CardTitle>
-          <CardDescription>Customize how Expy looks</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              {isDarkMode ? (
-                <Moon className="w-5 h-5" />
-              ) : (
-                <Sun className="w-5 h-5" />
-              )}
+      <Accordion type="multiple" defaultValue={["appearance", "money"]} className="space-y-4">
+        <SettingsSection
+          value="appearance"
+          title="Appearance"
+          subtitle="Theme and display preferences."
+          badge={<Badge variant="secondary">{isDarkMode ? "Dark" : "Light"}</Badge>}
+        >
+          <div className="app-list-row flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              {isDarkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
               <div>
-                <Label>Dark Mode</Label>
-                <p className="text-sm text-muted-foreground">
-                  {isDarkMode ? "Enabled" : "Disabled"}
-                </p>
+                <p className="app-list-title">Dark Mode</p>
+                <p className="app-list-meta">{isDarkMode ? "Enabled" : "Disabled"}</p>
               </div>
             </div>
             <Button onClick={toggleDarkMode} variant="outline">
               {isDarkMode ? "Disable" : "Enable"}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </SettingsSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Expense Categories</CardTitle>
-          <CardDescription>Manage your expense categories</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Tags className="w-5 h-5" />
-              <div>
-                <Label>Custom Categories</Label>
-                <p className="text-sm text-muted-foreground">
-                  {customCategories.length} custom {customCategories.length === 1 ? 'category' : 'categories'}
-                </p>
-              </div>
-            </div>
-            <Button onClick={() => setShowManageCategories(true)} variant="outline">
-              Manage
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>Manage your profile information</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <UserCircle className="w-4 h-4" />
-              <Label htmlFor="display-name">Display Name</Label>
-            </div>
-            <FloatingLabelInput
-              type="text"
-              label="Display name"
-              value={displayName}
-              onChange={(e) => {
-                setDisplayName(e.target.value);
-                setDisplayNameSaved(false);
-              }}
-            />
-            <Button 
-              onClick={handleDisplayNameChange} 
-              className="w-full h-12"
-              variant={displayNameSaved ? "default" : "outline"}
-            >
-              {displayNameSaved ? "Saved" : "Save Display Name"}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              This will be shown instead of your username
-            </p>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <AtSign className="w-4 h-4" />
-              <Label htmlFor="new-username">Change Username</Label>
-            </div>
-            <FloatingLabelInput
-              type="text"
-              label="New username"
-              value={newUsername}
-              onChange={(e) => setNewUsername(e.target.value)}
-              maxLength={10}
-            />
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="outline" disabled={!newUsername.trim()} className="w-full h-12">
-                  Change Username
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Change Username?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Your username will be changed from @{username} to @{newUsername}. You'll need to use the new username to log in.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleUsernameChange}>
-                    Change Username
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-
-          <Separator />
-
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <Lock className="w-4 h-4" />
-              <Label>Change Password</Label>
-            </div>
-            <FloatingLabelInput
-              type="password"
-              label="Current password"
-              value={currentPassword}
-              onChange={(e) => {
-                setCurrentPassword(e.target.value);
-                setPasswordSaved(false);
-              }}
-            />
-            <FloatingLabelInput
-              type="password"
-              label="New password"
-              value={newPassword}
-              onChange={(e) => {
-                setNewPassword(e.target.value);
-                setPasswordSaved(false);
-              }}
-            />
-            <FloatingLabelInput
-              type="password"
-              label="Confirm new password"
-              value={confirmPassword}
-              onChange={(e) => {
-                setConfirmPassword(e.target.value);
-                setPasswordSaved(false);
-              }}
-            />
-            <div className="text-xs text-muted-foreground space-y-1 -mt-1">
-              <p>Password requirements:</p>
-              <p className="ml-2">• Min 6 characters</p>
-              <p className="ml-2">• At least one capital letter</p>
-              <p className="ml-2">• At least one number</p>
-              <p className="ml-2">• At least one special character</p>
-            </div>
-            <Button 
-              onClick={handlePasswordChange}
-              className="w-full"
-              disabled={!currentPassword || !newPassword || !confirmPassword}
-              variant={passwordSaved ? "default" : "outline"}
-            >
-              {passwordSaved ? "Saved" : "Update Password"}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Account Information</CardTitle>
-          <CardDescription>Your account details</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div>
-            <Label className="text-sm text-muted-foreground">Username</Label>
-            <p>@{username}</p>
-          </div>
-          {displayName && (
-            <div>
-              <Label className="text-sm text-muted-foreground">Display Name</Label>
-              <p>{displayName}</p>
-            </div>
-          )}
-          <Separator />
-          <div>
-            <Label className="text-sm text-muted-foreground">Current Balance</Label>
-            <p className="text-xl">{formatCurrency(balance)}</p>
-          </div>
-          <div>
-            <Label className="text-sm text-muted-foreground">Initial Balance</Label>
-            <p>{formatCurrency(initialBalance)}</p>
-          </div>
-          <Separator />
-          <div className="space-y-2">
-            <Label htmlFor="budget-period">Budget Period</Label>
-            <Select value={budgetPeriod} onValueChange={(value) => handleBudgetPeriodChange(value as BudgetPeriod)}>
-              <SelectTrigger id="budget-period">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="daily">Daily Budget</SelectItem>
-                <SelectItem value="weekly">Weekly Budget</SelectItem>
-                <SelectItem value="monthly">Monthly Budget</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {budgetPeriod === "daily" && "Your current balance is intended for one day"}
-              {budgetPeriod === "weekly" && "Your current balance is intended for one week (7 days)"}
-              {budgetPeriod === "monthly" && "Your current balance is intended for one month (30 days)"}
-            </p>
-          </div>
-          <Separator />
-          <div className="space-y-2">
-            <Label htmlFor="budget-amount">Auto Budget Amount</Label>
-            <div className="flex gap-2">
-              <Input
-                id="budget-amount"
-                type="number"
-                placeholder="Enter amount"
-                value={budgetAmount}
-                onChange={(e) => {
-                  setBudgetAmount(e.target.value);
-                  setBudgetAmountSaved(false);
-                }}
-              />
-              <Button 
-                onClick={saveBudgetAmount}
-                variant={budgetAmountSaved ? "default" : "outline"}
-              >
-                {budgetAmountSaved ? "Saved" : "Save"}
-              </Button>
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {budgetPeriod === "daily" && "This amount will be added to your balance every day"}
-              {budgetPeriod === "weekly" && "This amount will be added to your balance every week"}
-              {budgetPeriod === "monthly" && "This amount will be added to your balance every month"}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <div className="flex items-start gap-2">
-            <Bell className="w-5 h-5 mt-1" />
-            <div className="flex-1">
-              <CardTitle>Notifications</CardTitle>
-              <CardDescription>
-                Manage your notification preferences
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-4">
-            <div>
-              <Label className="text-base">Daily Reminder</Label>
-              <p className="text-sm text-muted-foreground mb-3">
-                Get notified 1 hour before your day ends about your spending
-              </p>
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="text-sm font-medium">
-                    {notificationsEnabled ? "Enabled" : "Disabled"}
-                  </p>
-                  {notificationPermission !== "granted" && !notificationsEnabled && (
-                    <p className="text-xs text-muted-foreground">
-                      Permission required
-                    </p>
-                  )}
+        <SettingsSection
+          value="money"
+          title="Money & Currency"
+          subtitle="App currency, rates, and main balance rules."
+          badge={
+            <Badge variant="secondary" className="gap-1">
+              <Coins className="h-3 w-3" />
+              {preferredCurrency}
+            </Badge>
+          }
+        >
+          <div className="space-y-5">
+            <div className="space-y-3">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Currency</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="preferred-currency">App currency</Label>
+                  <Select value={preferredCurrency} onValueChange={(value) => void handleCurrencyChange(value as SupportedCurrency)}>
+                    <SelectTrigger id="preferred-currency">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-80">
+                      {SUPPORTED_CURRENCIES.map((currency) => (
+                        <SelectItem key={currency.code} value={currency.code}>
+                          {currency.label} ({currency.code})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <Button onClick={toggleNotifications} variant="outline">
-                  {notificationsEnabled ? "Disable" : "Enable"}
+
+                <div className="space-y-2">
+                  <Label>Base currency</Label>
+                  <div className="rounded-xl border border-border bg-muted/30 px-3 py-2 text-sm">
+                    {baseCurrency}
+                  </div>
+                </div>
+              </div>
+
+              <div className="app-list-row flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="app-list-title">Rate metadata</p>
+                  <p className="app-list-meta">
+                    {userData.currencySettings.source.toUpperCase()}
+                    {userData.currencySettings.provider ? ` • ${userData.currencySettings.provider}` : ""}
+                  </p>
+                  <p className="app-list-meta">
+                    {userData.currencySettings.lastUpdated
+                      ? new Date(userData.currencySettings.lastUpdated).toLocaleString()
+                      : "Not fetched yet"}
+                  </p>
+                </div>
+                <Button variant="outline" onClick={() => void refreshRates()} disabled={isRefreshingRates}>
+                  <RefreshCcw className={`mr-2 h-4 w-4 ${isRefreshingRates ? "animate-spin" : ""}`} />
+                  Refresh
                 </Button>
               </div>
+
+              {preferredCurrency !== baseCurrency && (
+                <div className="space-y-3 rounded-[22px] border border-border/70 bg-card/85 p-4">
+                  <div>
+                    <p className="app-list-title">Manual fallback override</p>
+                    <p className="app-list-meta">Only use this when live rates are unavailable.</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="manual-rate">1 {baseCurrency} equals</Label>
+                    <Input
+                      id="manual-rate"
+                      value={manualRate}
+                      onChange={(event) => setManualRate(event.target.value)}
+                      placeholder="0.0000"
+                    />
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      <span>Live: {liveRate ? liveRate.toFixed(4) : "Unavailable"} {preferredCurrency}</span>
+                      <span>Effective: {getEffectiveExchangeRate(userData.currencySettings, preferredCurrency).toFixed(4)} {preferredCurrency}</span>
+                      {manualRateOverride && <span>Manual override active</span>}
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button onClick={handleSaveManualRate} variant="outline" className="flex-1">
+                      Save Manual Rate
+                    </Button>
+                    <Button
+                      onClick={handleClearManualRate}
+                      variant="ghost"
+                      className="flex-1"
+                      disabled={!manualRateOverride}
+                    >
+                      Clear Override
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {notificationsEnabled && (
+            <Separator />
+
+            <div className="space-y-3">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Main Balance</p>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="muted-tile py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Current</p>
+                  <p className="mt-1.5 text-base font-semibold">{formatUserCurrency(userData.balance, userData.currencySettings)}</p>
+                </div>
+                <div className="muted-tile py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Tracked</p>
+                  <p className="mt-1.5 text-base font-semibold">{formatUserCurrency(userData.initialBalance, userData.currencySettings)}</p>
+                </div>
+              </div>
+
               <div className="space-y-2">
-                <Label htmlFor="day-end-time">Day End Time</Label>
+                <Label htmlFor="budget-period">Budget Period</Label>
+                <Select value={userData.budgetPeriod} onValueChange={(value) => handleBudgetPeriodChange(value as BudgetPeriod)}>
+                  <SelectTrigger id="budget-period">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="daily">Daily Budget</SelectItem>
+                    <SelectItem value="weekly">Weekly Budget</SelectItem>
+                    <SelectItem value="monthly">Monthly Budget</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="budget-amount">Auto Budget Amount</Label>
                 <div className="flex gap-2">
                   <Input
-                    id="day-end-time"
-                    type="time"
-                    value={dayEndTime}
-                    onChange={(e) => {
-                      setDayEndTime(e.target.value);
-                      setDayEndTimeSaved(false);
-                    }}
-                    className="flex-1"
+                    id="budget-amount"
+                    type="number"
+                    step="0.01"
+                    value={budgetAmount}
+                    onChange={(event) => setBudgetAmount(event.target.value)}
                   />
-                  <Button 
-                    onClick={saveDayEndTime}
-                    variant={dayEndTimeSaved ? "default" : "outline"}
-                    className={dayEndTimeSaved ? "bg-primary text-primary-foreground" : ""}
-                  >
-                    {dayEndTimeSaved ? "Saved" : "Save"}
+                  <Button onClick={saveBudgetAmount} variant="outline">
+                    Save
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  You'll be notified 1 hour before {dayEndTime}
-                </p>
+                <p className="text-xs text-muted-foreground">Stored in {baseCurrency}, shown in {preferredCurrency}.</p>
               </div>
-            )}
+            </div>
           </div>
+        </SettingsSection>
 
-          <Separator />
+        <SettingsSection
+          value="wallets"
+          title="Wallets & Exemptions"
+          subtitle="Independent wallet controls and excluded days."
+          badge={<Badge variant="secondary">{activeWallets.length} wallet{activeWallets.length === 1 ? "" : "s"}</Badge>}
+        >
+          <div className="space-y-5">
+            <div className="space-y-3">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Wallet Management</p>
+              <div className="app-list-row flex items-center justify-between gap-4">
+                <div>
+                  <p className="app-list-title">Currently active</p>
+                  <p className="app-list-meta">{activeAccountLabel}</p>
+                </div>
+                <Button onClick={() => setShowWalletManager(true)} variant="outline">
+                  Manage
+                </Button>
+              </div>
+            </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="threshold">Low Balance Alert (%)</Label>
-            <div className="flex gap-2">
-              <Input
-                id="threshold"
-                type="number"
-                min="0"
-                max="100"
-                step="1"
-                value={thresholdPercentage}
-                onChange={(e) => {
-                  setThresholdPercentage(e.target.value);
-                  setThresholdSaved(false);
-                }}
-                className="flex-1"
-              />
-              <Button 
-                onClick={saveThreshold}
-                variant={thresholdSaved ? "default" : "outline"}
-              >
-                {thresholdSaved ? "Saved" : "Save"}
+            <Separator />
+
+            <div className="space-y-3">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Wallet Budget</p>
+              {activeWallets.length === 0 ? (
+                <div className="app-empty-state text-sm text-muted-foreground">
+                  Create a wallet first to manage its auto budget.
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="wallet-budget-wallet">Selected Wallet</Label>
+                    <Select value={selectedWalletBudgetId} onValueChange={setSelectedWalletBudgetId}>
+                      <SelectTrigger id="wallet-budget-wallet">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-80">
+                        {activeWallets.map((wallet) => (
+                          <SelectItem key={wallet.id} value={wallet.id}>
+                            {wallet.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {selectedWalletForBudget && (
+                    <>
+                      <div className="app-list-row flex items-center justify-between gap-4">
+                        <div>
+                          <p className="app-list-title">Wallet auto budget</p>
+                          <p className="app-list-meta">
+                            {walletAutoBudgetEnabled ? `Active for ${selectedWalletForBudget.name}.` : `Off for ${selectedWalletForBudget.name}.`}
+                          </p>
+                        </div>
+                        <Switch checked={walletAutoBudgetEnabled} onCheckedChange={handleWalletBudgetToggle} />
+                      </div>
+
+                      {walletAutoBudgetEnabled ? (
+                        <>
+                          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                            <div className="space-y-2">
+                              <Label htmlFor="wallet-budget-amount">Auto Budget Amount</Label>
+                              <Input
+                                id="wallet-budget-amount"
+                                type="number"
+                                step="0.01"
+                                min="0"
+                                value={walletBudgetAmount}
+                                onChange={(event) => setWalletBudgetAmount(event.target.value)}
+                              />
+                            </div>
+
+                            <div className="space-y-2">
+                              <Label htmlFor="wallet-budget-period">Budget Period</Label>
+                              <Select value={walletBudgetPeriod} onValueChange={(value) => setWalletBudgetPeriod(value as BudgetPeriod)}>
+                                <SelectTrigger id="wallet-budget-period">
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="daily">Daily Budget</SelectItem>
+                                  <SelectItem value="weekly">Weekly Budget</SelectItem>
+                                  <SelectItem value="monthly">Monthly Budget</SelectItem>
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          </div>
+
+                          <div className="app-list-row flex items-center justify-between gap-3">
+                            <div>
+                              <p className="app-list-title">
+                                {walletBudgetAmount || "0.00"} {preferredCurrency} every {walletBudgetPeriod}
+                              </p>
+                              <p className="app-list-meta">Stored internally in {baseCurrency}.</p>
+                            </div>
+                            <Button onClick={handleSaveWalletBudget} variant="outline">
+                              Save
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="app-empty-state text-sm text-muted-foreground">
+                          Wallet budget stays hidden on the Wallets tab until auto budget is turned on.
+                        </div>
+                      )}
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Exempted Days</p>
+              <div className="app-list-row flex items-center justify-between gap-4">
+                <div>
+                  <p className="app-list-title">
+                    {userData.computationExemptions.length} exemption{userData.computationExemptions.length === 1 ? "" : "s"} configured
+                  </p>
+                  <p className="app-list-meta">Used across budgets and spending summaries.</p>
+                </div>
+                <Button variant="outline" onClick={handleExcludeToday}>
+                  Exclude Today
+                </Button>
+              </div>
+
+              <Button onClick={() => setShowExemptions(true)} variant="outline" className="w-full">
+                Manage Exempted Days
               </Button>
             </div>
-            {initialBalance > 0 && (
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="text-sm text-muted-foreground">
-                  You'll be alerted when balance drops below
-                </p>
-                <p className="text-lg">{formatCurrency(thresholdAmount)}</p>
-              </div>
-            )}
           </div>
-        </CardContent>
-      </Card>
+        </SettingsSection>
 
-      <Card className="border-destructive/50">
-        <CardHeader>
-          <CardTitle>Danger Zone</CardTitle>
-          <CardDescription>Irreversible actions</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        <SettingsSection
+          value="alerts"
+          title="Alerts & Categories"
+          subtitle="Reminder timing, low-balance alerts, and expense categories."
+          badge={<Badge variant="secondary">{userData.notificationsEnabled ? "Alerts On" : "Alerts Off"}</Badge>}
+        >
+          <div className="space-y-5">
+            <div className="space-y-3">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Alerts</p>
+              <div className="app-list-row flex items-center justify-between gap-4">
+                <div>
+                  <p className="app-list-title">Daily Reminder</p>
+                  <p className="app-list-meta">Sent one hour before your day ends.</p>
+                </div>
+                <Switch
+                  checked={userData.notificationsEnabled}
+                  onCheckedChange={(checked) => void toggleNotifications(checked)}
+                />
+              </div>
+
+              {userData.notificationsEnabled && (
+                <div className="space-y-2">
+                  <Label htmlFor="day-end-time">Day End Time</Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="day-end-time"
+                      type="time"
+                      value={dayEndTime}
+                      onChange={(event) => setDayEndTime(event.target.value)}
+                    />
+                    <Button onClick={saveDayEndTime} variant="outline">
+                      Save
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">Reminder fires one hour before {dayEndTime}.</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <Label htmlFor="threshold">Low Balance Alert (%)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="threshold"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={thresholdPercentage}
+                    onChange={(event) => setThresholdPercentage(event.target.value)}
+                  />
+                  <Button onClick={saveThreshold} variant="outline">
+                    Save
+                  </Button>
+                </div>
+                {userData.initialBalance > 0 && (
+                  <div className="app-list-row">
+                    <p className="app-list-meta">Alert triggers below</p>
+                    <p className="mt-1 text-base font-semibold">{formatUserCurrency(thresholdAmount, userData.currencySettings)}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Categories</p>
+              <div className="app-list-row flex items-center justify-between gap-4">
+                <div>
+                  <p className="app-list-title">{userData.customCategories.length} custom categor{userData.customCategories.length === 1 ? "y" : "ies"}</p>
+                  <p className="app-list-meta">Default categories stay available everywhere.</p>
+                </div>
+                <Button onClick={() => setShowManageCategories(true)} variant="outline">
+                  Manage
+                </Button>
+              </div>
+            </div>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          value="profile"
+          title="Profile & Security"
+          subtitle="Display name, username, and password."
+          badge={<Badge variant="secondary">@{username}</Badge>}
+        >
+          <div className="space-y-5">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <UserCircle className="h-4 w-4" />
+                <Label htmlFor="display-name">Display Name</Label>
+              </div>
+              <FloatingLabelInput
+                type="text"
+                label="Display name"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+              />
+              <Button onClick={handleDisplayNameChange} variant="outline" className="w-full">
+                Save Display Name
+              </Button>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <AtSign className="h-4 w-4" />
+                <Label htmlFor="new-username">Change Username</Label>
+              </div>
+              <FloatingLabelInput
+                type="text"
+                label="New username"
+                value={newUsername}
+                onChange={(event) => setNewUsername(event.target.value)}
+                maxLength={10}
+              />
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" disabled={!newUsername.trim()} className="w-full">
+                    Change Username
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Change Username?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Your login will change from @{username} to @{newUsername.trim()}.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleUsernameChange}>Change Username</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Lock className="h-4 w-4" />
+                <Label>Change Password</Label>
+              </div>
+              <FloatingLabelInput
+                type="password"
+                label="Current password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+              />
+              <FloatingLabelInput
+                type="password"
+                label="New password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+              />
+              <FloatingLabelInput
+                type="password"
+                label="Confirm new password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Minimum 6 characters with a capital letter, number, and special character.
+              </p>
+              <Button
+                onClick={handlePasswordChange}
+                className="w-full"
+                variant="outline"
+                disabled={!currentPassword || !newPassword || !confirmPassword}
+              >
+                Update Password
+              </Button>
+            </div>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          value="danger"
+          title="Danger Zone"
+          subtitle="Reset or permanently remove account data."
+          tone="danger"
+        >
+          <div className="space-y-3">
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" className="w-full justify-start">
-                <Trash2 className="w-4 h-4 mr-2" />
-                Clear Expense History
+                <Trash2 className="mr-2 h-4 w-4" />
+                Clear Main Expense History
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogTitle>Clear main expense history?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete all your expense records. This action cannot be undone.
+                  This removes main-balance expense entries and expense transactions. Savings, wallets, and profile data stay intact.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -747,15 +1111,15 @@ export function Settings({ username, onLogout }: SettingsProps) {
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" className="w-full justify-start">
-                <Trash2 className="w-4 h-4 mr-2" />
-                Reset Balance
+                <Trash2 className="mr-2 h-4 w-4" />
+                Reset Main Balance
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                <AlertDialogTitle>Reset main balance?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will reset your balance to {formatCurrency(0)}. This action cannot be undone.
+                  This sets your main balance and tracked initial balance back to {formatUserCurrency(0, userData.currencySettings)}. Savings and wallets are not changed.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -772,15 +1136,15 @@ export function Settings({ username, onLogout }: SettingsProps) {
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="outline" className="w-full justify-start text-orange-600 dark:text-orange-400">
-                <Trash2 className="w-4 h-4 mr-2" />
+                <Trash2 className="mr-2 h-4 w-4" />
                 Deactivate Account
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Deactivate Your Account?</AlertDialogTitle>
+                <AlertDialogTitle>Deactivate account?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Your account will be deactivated and you'll be logged out. You can reactivate by logging in again. Your data will be preserved.
+                  You will be logged out, but your data stays stored so you can come back later.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -795,15 +1159,15 @@ export function Settings({ username, onLogout }: SettingsProps) {
           <AlertDialog>
             <AlertDialogTrigger asChild>
               <Button variant="destructive" className="w-full justify-start">
-                <Trash2 className="w-4 h-4 mr-2" />
+                <Trash2 className="mr-2 h-4 w-4" />
                 Delete Account Permanently
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete Account Permanently?</AlertDialogTitle>
+                <AlertDialogTitle>Delete account permanently?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete your account and all associated data including expenses, balance, and settings. This action cannot be undone.
+                  This removes your account, balances, savings, wallets, settings, and transaction history forever.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -814,19 +1178,51 @@ export function Settings({ username, onLogout }: SettingsProps) {
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        </CardContent>
-      </Card>
+          </div>
+        </SettingsSection>
+      </Accordion>
 
       <Button onClick={onLogout} variant="outline" className="w-full">
-        <LogOut className="w-4 h-4 mr-2" />
+        <LogOut className="mr-2 h-4 w-4" />
         Logout
       </Button>
 
       <ManageCategoriesDialog
         open={showManageCategories}
         onOpenChange={setShowManageCategories}
-        customCategories={customCategories}
+        customCategories={userData.customCategories}
         onUpdateCategories={handleUpdateCategories}
+      />
+
+      <ExemptionManagerDialog
+        open={showExemptions}
+        onOpenChange={setShowExemptions}
+        exemptions={userData.computationExemptions}
+        onChange={(nextExemptions) =>
+          updateUserData(username, (currentUserData) => ({
+            ...currentUserData,
+            computationExemptions: nextExemptions,
+          }))
+        }
+        onExcludeToday={handleExcludeToday}
+        todayExcluded={isDateExempt(new Date(), userData.computationExemptions)}
+      />
+
+      <WalletManagerDialog
+        open={showWalletManager}
+        onOpenChange={setShowWalletManager}
+        wallets={userData.wallets}
+        onChange={(nextWallets) =>
+          updateUserData(username, (currentUserData) => ({
+            ...currentUserData,
+            wallets: nextWallets,
+          }))
+        }
+        onOpenWallet={(walletId) => {
+          setShowWalletManager(false);
+          onOpenWallet(walletId);
+        }}
+        currencySettings={userData.currencySettings}
       />
     </div>
   );

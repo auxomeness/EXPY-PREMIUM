@@ -1,299 +1,251 @@
-import { useState, useEffect } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
-import { Plus, TrendingDown, Wallet, AlertCircle, Calendar, CalendarDays, CalendarRange, AlertTriangle, X, Flame } from "lucide-react";
-import { AddMoneyDialog } from "./AddMoneyDialog";
-import { AddExpenseDialog } from "./AddExpenseDialog";
-import { ManageCategoriesDialog } from "./ManageCategoriesDialog";
-import { ExpenseChart } from "./ExpenseChart";
-import { BadgesDisplay } from "./BadgesDisplay";
-import { UndoNotification } from "./UndoNotification";
-import type { UserData, Expense, Transaction } from "../App";
-import { Alert, AlertDescription } from "./ui/alert";
-import { formatCurrency } from "../utils/currency";
-import { checkAndAllocateBudget } from "../utils/budget";
-import { checkAndSendDailyNotification } from "../utils/notifications";
+import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, AlertTriangle, Calendar, CalendarDays, CalendarRange, Flame, Plus, TrendingDown, Wallet, X } from "lucide-react";
 import { AnimatePresence } from "motion/react";
+import type { Expense, Transaction, UserData } from "../App";
+import { calculateBudgetMetrics, filterExpensesForAnalysis, isDateExempt, sortByDateDescending } from "../utils/finance";
+import { checkAndAllocateBudget } from "../utils/budget";
+import { convertToBaseCurrency, formatUserCurrency } from "../utils/currency";
+import { createDefaultUserData, getUserData, saveUserData, subscribeToUserData, updateUserData } from "../utils/userData";
+import { checkAndSendDailyNotification } from "../utils/notifications";
+import { AddExpenseDialog } from "./AddExpenseDialog";
+import { AddMoneyDialog } from "./AddMoneyDialog";
+import { BadgesDisplay } from "./BadgesDisplay";
+import { ExpenseChart } from "./ExpenseChart";
+import { ExemptionManagerDialog } from "./ExemptionManagerDialog";
+import { ManageCategoriesDialog } from "./ManageCategoriesDialog";
+import { UndoNotification } from "./UndoNotification";
+import { Alert, AlertDescription } from "./ui/alert";
+import { Button } from "./ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
+import { Progress } from "./ui/progress";
 
 type DashboardProps = {
   username: string;
 };
 
 export function Dashboard({ username }: DashboardProps) {
-  const [userData, setUserData] = useState<UserData>({
-    username,
-    balance: 0,
-    initialBalance: 0,
-    expenses: [],
-    transactions: [],
-    thresholdPercentage: 20,
-    customCategories: [],
-    budgetPeriod: "monthly",
-    budgetAmount: 0,
-    lastBudgetReset: new Date().toISOString(),
-    currentStreak: 0,
-    lastOpenedDate: new Date().toISOString(),
-    savings: 0,
-    savingsLocked: false,
-    notificationsEnabled: false,
-    dayEndTime: "22:00",
-    lastNotificationDate: "",
-    securityQuestions: {
-      nickname: "",
-      birthdate: "",
-      favoriteColor: "",
-      secretCode: "",
-    },
-  });
+  const [userData, setUserData] = useState<UserData>(createDefaultUserData(username));
   const [showAddMoney, setShowAddMoney] = useState(false);
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [showManageCategories, setShowManageCategories] = useState(false);
+  const [showExemptionManager, setShowExemptionManager] = useState(false);
   const [showThresholdAlert, setShowThresholdAlert] = useState(false);
   const [dismissedThresholdAlert, setDismissedThresholdAlert] = useState(false);
   const [dismissedOverspentAlert, setDismissedOverspentAlert] = useState(false);
   const [dismissedSustainAlert, setDismissedSustainAlert] = useState(false);
-  const [displayName, setDisplayName] = useState("");
-  const [undoAction, setUndoAction] = useState<{
-    type: "addMoney" | "addExpense";
+  const [undoSnapshot, setUndoSnapshot] = useState<{
     message: string;
-    previousData: Partial<UserData>;
+    previousUserData: UserData;
   } | null>(null);
 
   useEffect(() => {
+    const loadUserData = () => {
+      const storedUserData = getUserData(username);
+      if (!storedUserData) return;
+
+      const budgetAdjustedUserData = checkAndAllocateBudget(storedUserData);
+      if (JSON.stringify(storedUserData) !== JSON.stringify(budgetAdjustedUserData)) {
+        saveUserData(username, budgetAdjustedUserData);
+      }
+
+      setUserData(budgetAdjustedUserData);
+    };
+
     loadUserData();
+
+    return subscribeToUserData(username, (nextUserData) => {
+      setUserData(checkAndAllocateBudget(nextUserData));
+    });
   }, [username]);
 
   useEffect(() => {
-    // Check for daily notifications whenever userData changes
     checkAndSendDailyNotification(userData);
   }, [userData]);
 
+  const todayExcluded = isDateExempt(new Date(), userData.computationExemptions);
+  const budgetMetrics = useMemo(
+    () =>
+      calculateBudgetMetrics(
+        {
+          balance: userData.balance,
+          budgetAmount: userData.budgetAmount,
+          budgetPeriod: userData.budgetPeriod,
+          lastBudgetReset: userData.lastBudgetReset,
+          expenses: userData.expenses,
+        },
+        userData.computationExemptions,
+      ),
+    [userData.balance, userData.budgetAmount, userData.budgetPeriod, userData.lastBudgetReset, userData.expenses, userData.computationExemptions],
+  );
+  const analysisExpenses = useMemo(
+    () => filterExpensesForAnalysis(userData.expenses, userData.computationExemptions),
+    [userData.expenses, userData.computationExemptions],
+  );
+  const recentExpenses = useMemo(
+    () => sortByDateDescending(userData.expenses).slice(0, 3),
+    [userData.expenses],
+  );
+
   useEffect(() => {
-    checkThreshold();
-  }, [userData.balance, userData.initialBalance, userData.thresholdPercentage]);
-
-  const loadUserData = () => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    if (users[username]) {
-      let data = { username, ...users[username] };
-      
-      // Load display name
-      setDisplayName(data.displayName || "");
-      
-      // Check if we need to allocate new budget for a new period
-      data = checkAndAllocateBudget(data);
-      
-      // Save back if budget was allocated
-      if (data.balance !== users[username].balance) {
-        users[username] = data;
-        localStorage.setItem("expy_users", JSON.stringify(users));
-      }
-      
-      setUserData(data);
-    }
-  };
-
-  const saveUserData = (data: Partial<UserData>) => {
-    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
-    users[username] = { ...users[username], ...data };
-    localStorage.setItem("expy_users", JSON.stringify(users));
-    loadUserData();
-  };
-
-  const checkThreshold = () => {
     if (userData.initialBalance > 0) {
       const thresholdAmount = (userData.thresholdPercentage / 100) * userData.initialBalance;
       setShowThresholdAlert(userData.balance <= thresholdAmount && userData.balance > 0);
+      return;
+    }
+
+    setShowThresholdAlert(false);
+  }, [userData.balance, userData.initialBalance, userData.thresholdPercentage]);
+
+  const persistMainAccount = (updater: (currentUserData: UserData) => UserData, message?: string) => {
+    const previousUserData = userData;
+    const nextUserData = updateUserData(username, updater);
+    if (!nextUserData) return;
+
+    if (message) {
+      setUndoSnapshot({
+        message,
+        previousUserData,
+      });
     }
   };
 
   const handleAddMoney = (amount: number, period: import("../App").BudgetPeriod) => {
-    // Save previous state for undo
-    const previousData = {
-      balance: userData.balance,
-      initialBalance: userData.initialBalance,
-      budgetPeriod: userData.budgetPeriod,
-      transactions: userData.transactions || [],
-    };
-    
-    // Create transaction record
+    const amountInBaseCurrency = convertToBaseCurrency(amount, userData.currencySettings);
     const transaction: Transaction = {
       id: Date.now().toString(),
       type: "add_money",
-      amount: amount,
+      amount: amountInBaseCurrency,
       date: new Date().toISOString(),
     };
-    
-    const newBalance = userData.balance + amount;
-    const newInitialBalance = userData.initialBalance + amount;
-    const newTransactions = [transaction, ...(userData.transactions || [])];
-    
-    saveUserData({ 
-      balance: newBalance, 
-      initialBalance: newInitialBalance, 
-      budgetPeriod: period,
-      transactions: newTransactions,
-    });
+
+    persistMainAccount(
+      (currentUserData) => ({
+        ...currentUserData,
+        balance: currentUserData.balance + amountInBaseCurrency,
+        initialBalance: currentUserData.initialBalance + amountInBaseCurrency,
+        budgetPeriod: period,
+        transactions: [transaction, ...currentUserData.transactions],
+      }),
+      `Added ${formatUserCurrency(amountInBaseCurrency, userData.currencySettings)} to Main Balance`,
+    );
+
     setShowAddMoney(false);
-    
-    // Show undo notification
-    setUndoAction({
-      type: "addMoney",
-      message: `Added ${formatCurrency(amount)} to balance`,
-      previousData,
-    });
   };
 
   const handleAddExpense = (expense: Omit<Expense, "id" | "date">) => {
+    const amountInBaseCurrency = convertToBaseCurrency(expense.amount, userData.currencySettings);
     const newExpense: Expense = {
       ...expense,
+      amount: amountInBaseCurrency,
       id: Date.now().toString(),
       date: new Date().toISOString(),
     };
-    
-    // Create transaction record
     const transaction: Transaction = {
       id: newExpense.id,
       type: "expense",
-      amount: expense.amount,
+      amount: amountInBaseCurrency,
       category: expense.category,
       description: expense.description,
       date: newExpense.date,
     };
-    
-    // Save previous state for undo
-    const previousData = {
-      balance: userData.balance,
-      expenses: userData.expenses,
-      transactions: userData.transactions || [],
-    };
-    
-    const newBalance = userData.balance - expense.amount;
-    const newExpenses = [newExpense, ...userData.expenses];
-    const newTransactions = [transaction, ...(userData.transactions || [])];
-    
-    saveUserData({ 
-      balance: newBalance, 
-      expenses: newExpenses,
-      transactions: newTransactions,
-    });
-    
-    // Show undo notification
-    setUndoAction({
-      type: "addExpense",
-      message: `Added expense: ${formatCurrency(expense.amount)}`,
-      previousData,
-    });
+
+    persistMainAccount(
+      (currentUserData) => ({
+        ...currentUserData,
+        balance: currentUserData.balance - amountInBaseCurrency,
+        expenses: [newExpense, ...currentUserData.expenses],
+        transactions: [transaction, ...currentUserData.transactions],
+      }),
+      `Added expense: ${formatUserCurrency(amountInBaseCurrency, userData.currencySettings)}`,
+    );
   };
 
   const handleUndo = () => {
-    if (undoAction) {
-      saveUserData(undoAction.previousData);
-      setUndoAction(null);
-    }
-  };
+    if (!undoSnapshot) return;
 
-  const handleUndoComplete = () => {
-    setUndoAction(null);
+    saveUserData(username, undoSnapshot.previousUserData);
+    setUndoSnapshot(null);
   };
 
   const handleUpdateCategories = (categories: string[]) => {
-    saveUserData({ customCategories: categories });
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      customCategories: categories,
+    }));
   };
 
-  const recentExpenses = userData.expenses.slice(0, 3);
-  
-  // Calculate spending allowances based on budget period
-  // Only show budgets for periods equal to or shorter than the budget period
-  let dailyBudget: number;
-  let weeklyBudget: number;
-  let monthlyBudget: number;
+  const handleExcludeToday = () => {
+    if (todayExcluded) return;
 
-  const budgetPeriod = userData.budgetPeriod || "monthly";
-  
-  if (budgetPeriod === "daily") {
-    // Balance is for one day only
-    dailyBudget = userData.balance;
-    weeklyBudget = 0; // Can't project daily balance to weekly
-    monthlyBudget = 0; // Can't project daily balance to monthly
-  } else if (budgetPeriod === "weekly") {
-    // Balance is for one week
-    dailyBudget = userData.balance / 7; // Break down weekly to daily
-    weeklyBudget = userData.balance;
-    monthlyBudget = 0; // Can't project weekly balance to monthly
-  } else { // monthly
-    // Balance is for one month
-    dailyBudget = userData.balance / 30;
-    weeklyBudget = userData.balance / 4.29; // ~30/7
-    monthlyBudget = userData.balance;
-  }
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      computationExemptions: [
+        ...currentUserData.computationExemptions,
+        {
+          id: `exemption-today-${Date.now()}`,
+          name: "Exclude Today",
+          date: new Date().toISOString(),
+          repeat: "none",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        },
+      ],
+    }));
+  };
 
-  // Calculate today's spending
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayExpenses = userData.expenses.filter(expense => {
-    const expenseDate = new Date(expense.date);
-    expenseDate.setHours(0, 0, 0, 0);
-    return expenseDate.getTime() === today.getTime();
-  });
-  const todaySpent = todayExpenses.reduce((sum, expense) => sum + expense.amount, 0);
-
-  // Calculate average daily spending (last 7 days)
-  const sevenDaysAgo = new Date();
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-  const recentExpenses7Days = userData.expenses.filter(expense => 
-    new Date(expense.date) >= sevenDaysAgo
-  );
-  const totalSpentLast7Days = recentExpenses7Days.reduce((sum, expense) => sum + expense.amount, 0);
-  const averageDailySpending = recentExpenses7Days.length > 0 ? totalSpentLast7Days / 7 : 0;
-
-  // Calculate sustainability
-  const daysRemaining = averageDailySpending > 0 ? Math.floor(userData.balance / averageDailySpending) : Infinity;
-  const weeksRemaining = daysRemaining / 7;
-  const monthsRemaining = daysRemaining / 30;
-
-  // Check if overspent today
-  const overspentToday = todaySpent > dailyBudget;
+  const thresholdAmount = (userData.thresholdPercentage / 100) * userData.initialBalance;
+  const todayDifference = budgetMetrics.dailyBudget - budgetMetrics.todaySpent;
 
   return (
-    <div className="p-4 space-y-4">
-      <div className="pt-2 flex items-center justify-between">
-        <h1>Welcome back, {displayName || username}!</h1>
-        <div className="flex items-center gap-2">
-          {userData.currentStreak > 0 && (
-            <div className="flex items-center gap-1.5 bg-primary/10 text-primary px-3 py-1.5 rounded-full border border-primary/20">
-              <Flame className="w-4 h-4" />
-              <span className="text-sm font-bold">{userData.currentStreak}</span>
-            </div>
-          )}
-          <BadgesDisplay userData={userData} />
+    <div className="page-shell">
+      <div className="page-header">
+        <div className="min-w-0 space-y-3">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Main Balance</p>
+          <h1 className="page-title">Welcome back, {userData.displayName || username}!</h1>
+          <div className="header-stats-row">
+            {userData.currentStreak > 0 && (
+              <div className="header-stat-card">
+                <div className="header-stat-icon">
+                  <Flame className="h-4 w-4" />
+                </div>
+                <div>
+                  <p className="header-stat-label">Streak</p>
+                  <p className="header-stat-value">{userData.currentStreak}</p>
+                </div>
+              </div>
+            )}
+            <BadgesDisplay userData={userData} variant="dashboard" />
+          </div>
         </div>
       </div>
 
-      <Card className="bg-gradient-to-br from-primary to-primary/80">
-        <CardContent className="pt-6">
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-primary-foreground/80 text-sm">Current Balance</p>
-            <Wallet className="w-5 h-5 text-primary-foreground/80" />
+      <Card className="hero-card border-0">
+        <CardContent className="relative space-y-5 overflow-hidden pt-5">
+          <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/10 blur-2xl" />
+          <div className="absolute -left-8 bottom-0 h-24 w-24 rounded-full bg-white/8 blur-2xl" />
+          <div className="relative flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm text-primary-foreground/72">Available now</p>
+              <p className="mt-2 text-[2.45rem] font-semibold tracking-[-0.05em] text-primary-foreground">
+                {formatUserCurrency(userData.balance, userData.currencySettings)}
+              </p>
+            </div>
+            <div className="rounded-full border border-white/12 bg-white/10 p-3">
+              <Wallet className="h-5 w-5 text-primary-foreground/80" />
+            </div>
           </div>
-          <p className="text-4xl text-primary-foreground mb-4">{formatCurrency(userData.balance)}</p>
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              onClick={() => setShowAddMoney(true)}
-              variant="secondary"
-              size="sm"
-              className="w-full"
-            >
-              <Plus className="w-4 h-4 mr-1" />
+          <div className="grid grid-cols-2 gap-3">
+            <Button onClick={() => setShowAddMoney(true)} size="lg" variant="secondary" className="w-full">
+              <Plus className="mr-1 h-4 w-4" />
               Add Money
             </Button>
             <Button
               onClick={() => setShowAddExpense(true)}
+              size="lg"
               variant="outline"
-              size="sm"
-              className="w-full bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white"
+              className="w-full border-white/16 bg-white/10 text-white hover:bg-white/16 hover:text-white"
             >
-              <TrendingDown className="w-4 h-4 mr-1" />
+              <TrendingDown className="mr-1 h-4 w-4" />
               Add Expense
             </Button>
           </div>
@@ -301,15 +253,16 @@ export function Dashboard({ username }: DashboardProps) {
       </Card>
 
       {showThresholdAlert && !dismissedThresholdAlert && (
-        <Alert className="border-orange-500 bg-orange-50 dark:bg-orange-950 dark:border-orange-900 relative">
+        <Alert className="relative border-orange-500 bg-orange-50 dark:border-orange-900 dark:bg-orange-950">
           <AlertCircle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
-          <AlertDescription className="text-orange-800 dark:text-orange-200 pr-8">
-            Your balance is below {userData.thresholdPercentage}% of your initial amount ({formatCurrency((userData.thresholdPercentage / 100 * userData.initialBalance))})
+          <AlertDescription className="pr-8 text-orange-800 dark:text-orange-200">
+            Main Balance is below {userData.thresholdPercentage}% of its tracked amount (
+            {formatUserCurrency(thresholdAmount, userData.currencySettings)}).
           </AlertDescription>
           <Button
             variant="ghost"
             size="icon"
-            className="absolute top-2 right-2 h-6 w-6 text-orange-600 dark:text-orange-400 hover:bg-orange-100 dark:hover:bg-orange-900"
+            className="absolute right-2 top-2 h-6 w-6 text-orange-600 hover:bg-orange-100 dark:text-orange-400 dark:hover:bg-orange-900"
             onClick={() => setDismissedThresholdAlert(true)}
           >
             <X className="h-4 w-4" />
@@ -317,16 +270,18 @@ export function Dashboard({ username }: DashboardProps) {
         </Alert>
       )}
 
-      {overspentToday && !dismissedOverspentAlert && (
-        <Alert className="border-red-500 bg-red-50 dark:bg-red-950 dark:border-red-900 relative">
+      {!budgetMetrics.todayExcluded && budgetMetrics.overspentToday && !dismissedOverspentAlert && (
+        <Alert className="relative border-red-500 bg-red-50 dark:border-red-900 dark:bg-red-950">
           <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400" />
-          <AlertDescription className="text-red-800 dark:text-red-200 pr-8">
-            You've overspent today! Spent {formatCurrency(todaySpent)} out of your daily budget of {formatCurrency(dailyBudget)}
+          <AlertDescription className="pr-8 text-red-800 dark:text-red-200">
+            You've overspent today in Main Balance. Spent{" "}
+            {formatUserCurrency(budgetMetrics.todaySpent, userData.currencySettings)} out of a daily budget of{" "}
+            {formatUserCurrency(budgetMetrics.dailyBudget, userData.currencySettings)}.
           </AlertDescription>
           <Button
             variant="ghost"
             size="icon"
-            className="absolute top-2 right-2 h-6 w-6 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900"
+            className="absolute right-2 top-2 h-6 w-6 text-red-600 hover:bg-red-100 dark:text-red-400 dark:hover:bg-red-900"
             onClick={() => setDismissedOverspentAlert(true)}
           >
             <X className="h-4 w-4" />
@@ -334,124 +289,160 @@ export function Dashboard({ username }: DashboardProps) {
         </Alert>
       )}
 
-      {daysRemaining !== Infinity && daysRemaining < 30 && userData.balance > 0 && !dismissedSustainAlert && (
-        <Alert className="border-yellow-500 bg-yellow-50 dark:bg-yellow-950 dark:border-yellow-900 relative">
-          <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
-          <AlertDescription className="text-yellow-800 dark:text-yellow-200 pr-8">
-            {daysRemaining < 1 ? (
-              "⚠️ At your current spending rate, your balance won't last another day!"
-            ) : daysRemaining < 7 ? (
-              `⚠️ At your current spending rate, you can sustain for ${daysRemaining} more day${daysRemaining !== 1 ? 's' : ''}.`
-            ) : daysRemaining < 30 ? (
-              `At your current spending rate, you can sustain for ${Math.floor(weeksRemaining)} week${Math.floor(weeksRemaining) !== 1 ? 's' : ''} (${daysRemaining} days).`
-            ) : null}
-          </AlertDescription>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-2 right-2 h-6 w-6 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-100 dark:hover:bg-yellow-900"
-            onClick={() => setDismissedSustainAlert(true)}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </Alert>
-      )}
+      {budgetMetrics.daysRemaining !== Infinity &&
+        budgetMetrics.daysRemaining < 30 &&
+        userData.balance > 0 &&
+        !dismissedSustainAlert && (
+          <Alert className="relative border-yellow-500 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950">
+            <AlertCircle className="h-4 w-4 text-yellow-600 dark:text-yellow-400" />
+            <AlertDescription className="pr-8 text-yellow-800 dark:text-yellow-200">
+              {budgetMetrics.daysRemaining < 1
+                ? "At the current non-exempt spending rate, Main Balance will not last another active day."
+                : `At the current non-exempt spending rate, Main Balance can sustain for about ${budgetMetrics.daysRemaining} more active day${budgetMetrics.daysRemaining === 1 ? "" : "s"}.`}
+            </AlertDescription>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="absolute right-2 top-2 h-6 w-6 text-yellow-600 hover:bg-yellow-100 dark:text-yellow-400 dark:hover:bg-yellow-900"
+              onClick={() => setDismissedSustainAlert(true)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </Alert>
+        )}
 
       <Card>
         <CardHeader>
-          <CardTitle>Spending Budget</CardTitle>
-          <CardDescription>How much you can spend</CardDescription>
+          <div className="flex items-center justify-between gap-3">
+            <CardTitle>Spending Budget</CardTitle>
+            <Button variant={todayExcluded ? "secondary" : "outline"} size="sm" onClick={() => setShowExemptionManager(true)}>
+              {todayExcluded ? "Today Excluded" : "Exclude Today"}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="flex flex-col items-center p-3 bg-muted rounded-lg">
-              <Calendar className="w-5 h-5 text-muted-foreground mb-2" />
-              <p className="text-xs text-muted-foreground mb-1">Per Day</p>
-              <p className="text-sm">{formatCurrency(dailyBudget)}</p>
+          <div className="grid grid-cols-3 gap-2.5">
+            <div className="muted-tile py-3 text-center">
+              <Calendar className="mx-auto mb-1.5 h-4 w-4 text-muted-foreground" />
+              <p className="mb-1 text-[11px] text-muted-foreground">Per Day</p>
+              <p className="text-sm">{formatUserCurrency(budgetMetrics.dailyBudget, userData.currencySettings)}</p>
             </div>
-            <div className="flex flex-col items-center p-3 bg-muted rounded-lg">
-              <CalendarDays className="w-5 h-5 text-muted-foreground mb-2" />
-              <p className="text-xs text-muted-foreground mb-1">Per Week</p>
-              <p className="text-sm">{formatCurrency(weeklyBudget)}</p>
+            <div className="muted-tile py-3 text-center">
+              <CalendarDays className="mx-auto mb-1.5 h-4 w-4 text-muted-foreground" />
+              <p className="mb-1 text-[11px] text-muted-foreground">Per Week</p>
+              <p className="text-sm">{formatUserCurrency(budgetMetrics.weeklyBudget, userData.currencySettings)}</p>
             </div>
-            <div className="flex flex-col items-center p-3 bg-muted rounded-lg">
-              <CalendarRange className="w-5 h-5 text-muted-foreground mb-2" />
-              <p className="text-xs text-muted-foreground mb-1">Per Month</p>
-              <p className="text-sm">{formatCurrency(monthlyBudget)}</p>
+            <div className="muted-tile py-3 text-center">
+              <CalendarRange className="mx-auto mb-1.5 h-4 w-4 text-muted-foreground" />
+              <p className="mb-1 text-[11px] text-muted-foreground">Per Month</p>
+              <p className="text-sm">{formatUserCurrency(budgetMetrics.monthlyBudget, userData.currencySettings)}</p>
             </div>
           </div>
+          <p className="mt-3 text-xs text-muted-foreground">
+            {userData.computationExemptions.length === 0
+              ? "No exempted days are configured."
+              : `${userData.computationExemptions.length} exempted day configuration${userData.computationExemptions.length === 1 ? "" : "s"} currently shape these calculations.`}
+          </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
           <CardTitle>Today's Spending</CardTitle>
-          <CardDescription>Your spending progress for today</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-muted-foreground">Daily Budget</span>
-            <span className="text-sm">{formatCurrency(dailyBudget)}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm text-muted-foreground">Spent Today</span>
-            <span className={`text-sm ${overspentToday ? 'text-red-600 dark:text-red-400' : ''}`}>
-              {formatCurrency(todaySpent)}
-            </span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span className="text-sm font-medium">
-              {todaySpent < dailyBudget ? 'Saved Today' : 'Overspent'}
-            </span>
-            <span className={`text-sm font-medium ${todaySpent < dailyBudget ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-              {todaySpent < dailyBudget ? '+' : ''}{formatCurrency(dailyBudget - todaySpent)}
-            </span>
-          </div>
-          <div className="relative pt-1">
-            <div className="overflow-hidden h-2 text-xs flex rounded bg-muted">
-              <div
-                style={{ width: `${Math.min((todaySpent / dailyBudget) * 100, 100)}%` }}
-                className={`shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center ${
-                  overspentToday ? 'bg-destructive' : 'bg-primary'
-                }`}
-              />
+          {budgetMetrics.todayExcluded ? (
+            <div className="app-empty-state text-sm text-muted-foreground">
+              Today's activity is still recorded, but it won't affect automatic calculations.
             </div>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            {todaySpent < dailyBudget 
-              ? `Great job! You're under budget by ${formatCurrency(dailyBudget - todaySpent)}. This amount stays in your balance for future use.`
-              : `You've exceeded your daily budget by ${formatCurrency(todaySpent - dailyBudget)}.`
-            }
-          </p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-2.5">
+                <div className="muted-tile py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Daily Budget</p>
+                  <p className="mt-1.5 text-base font-semibold">{formatUserCurrency(budgetMetrics.dailyBudget, userData.currencySettings)}</p>
+                </div>
+                <div className="muted-tile py-3">
+                  <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Spent Today</p>
+                  <p className={`mt-1.5 text-base font-semibold ${budgetMetrics.overspentToday ? "text-red-600 dark:text-red-400" : ""}`}>
+                    {formatUserCurrency(budgetMetrics.todaySpent, userData.currencySettings)}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-muted/25 px-4 py-3">
+                <span className="text-sm font-medium">
+                  {budgetMetrics.todaySpent < budgetMetrics.dailyBudget ? "Saved Today" : "Overspent"}
+                </span>
+                <span
+                  className={`text-sm font-medium ${
+                    todayDifference >= 0
+                      ? "text-green-600 dark:text-green-400"
+                      : "text-red-600 dark:text-red-400"
+                  }`}
+                >
+                  {todayDifference >= 0 ? "+" : ""}
+                  {formatUserCurrency(todayDifference, userData.currencySettings)}
+                </span>
+              </div>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Daily progress</span>
+                  <span>
+                    {budgetMetrics.dailyBudget > 0
+                      ? `${Math.min((budgetMetrics.todaySpent / budgetMetrics.dailyBudget) * 100, 100).toFixed(0)}% used`
+                      : "0% used"}
+                  </span>
+                </div>
+                <Progress
+                  value={Math.min(
+                    budgetMetrics.dailyBudget > 0 ? (budgetMetrics.todaySpent / budgetMetrics.dailyBudget) * 100 : 0,
+                    100,
+                  )}
+                  className={budgetMetrics.overspentToday ? "[&_[data-slot=progress-indicator]]:bg-destructive" : ""}
+                />
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
-      <ExpenseChart expenses={userData.expenses} />
+      <ExpenseChart expenses={analysisExpenses} currencySettings={userData.currencySettings} />
 
       <Card>
         <CardHeader>
           <CardTitle>Recent Expenses</CardTitle>
-          <CardDescription>Your latest transactions</CardDescription>
         </CardHeader>
         <CardContent>
           {recentExpenses.length === 0 ? (
-            <p className="text-center text-muted-foreground py-4">No expenses yet</p>
+            <div className="app-empty-state space-y-3">
+              <p className="text-sm text-muted-foreground">No expenses yet.</p>
+              <Button onClick={() => setShowAddExpense(true)} variant="outline" size="sm">
+                Add Expense
+              </Button>
+            </div>
           ) : (
             <div className="space-y-3">
-              {recentExpenses.map((expense) => (
-                <div key={expense.id} className="flex items-center justify-between">
-                  <div className="flex-1">
-                    <p className="capitalize">{expense.description || expense.category}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {new Date(expense.date).toLocaleDateString()}
-                    </p>
+              {recentExpenses.map((expense) => {
+                const expenseExcluded = isDateExempt(new Date(expense.date), userData.computationExemptions);
+
+                return (
+                  <div key={expense.id} className="app-list-row flex items-center justify-between gap-3">
+                    <div className="flex-1">
+                      <p className="app-list-title truncate capitalize">{expense.description || expense.category}</p>
+                      <p className="app-list-meta">
+                        {new Date(expense.date).toLocaleDateString()}
+                        {expenseExcluded ? " • Exempted from analytics" : ""}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-semibold text-red-600 dark:text-red-400">
+                        -{formatUserCurrency(expense.amount, userData.currencySettings)}
+                      </p>
+                      <p className="mt-1 text-xs capitalize text-muted-foreground">{expense.category}</p>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-red-600 dark:text-red-400">-{formatCurrency(expense.amount)}</p>
-                    <p className="text-xs text-muted-foreground capitalize">{expense.category}</p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
@@ -461,6 +452,8 @@ export function Dashboard({ username }: DashboardProps) {
         open={showAddMoney}
         onOpenChange={setShowAddMoney}
         onAddMoney={handleAddMoney}
+        currencyCode={userData.currencySettings.preferredCurrency}
+        accountLabel="Main Balance"
       />
 
       <AddExpenseDialog
@@ -470,6 +463,8 @@ export function Dashboard({ username }: DashboardProps) {
         currentBalance={userData.balance}
         customCategories={userData.customCategories || []}
         onManageCategories={() => setShowManageCategories(true)}
+        currencySettings={userData.currencySettings}
+        accountLabel="Main Balance"
       />
 
       <ManageCategoriesDialog
@@ -479,12 +474,26 @@ export function Dashboard({ username }: DashboardProps) {
         onUpdateCategories={handleUpdateCategories}
       />
 
+      <ExemptionManagerDialog
+        open={showExemptionManager}
+        onOpenChange={setShowExemptionManager}
+        exemptions={userData.computationExemptions}
+        onChange={(nextExemptions) =>
+          updateUserData(username, (currentUserData) => ({
+            ...currentUserData,
+            computationExemptions: nextExemptions,
+          }))
+        }
+        onExcludeToday={handleExcludeToday}
+        todayExcluded={todayExcluded}
+      />
+
       <AnimatePresence>
-        {undoAction && (
+        {undoSnapshot && (
           <UndoNotification
-            message={undoAction.message}
+            message={undoSnapshot.message}
             onUndo={handleUndo}
-            onComplete={handleUndoComplete}
+            onComplete={() => setUndoSnapshot(null)}
           />
         )}
       </AnimatePresence>

@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { FloatingLabelInput } from "./FloatingLabelInput";
 import { toast } from "sonner";
 import { Shield, ArrowRight } from "lucide-react";
+import { createDefaultUserData } from "../utils/userData";
 
 type SecurityQuestionsSetupProps = {
   username: string;
@@ -33,24 +34,7 @@ export function SecurityQuestionsSetup({ username, password, onComplete }: Secur
     // Save user with security questions
     const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
     users[username] = {
-      username,
-      password,
-      balance: 0,
-      initialBalance: 0,
-      expenses: [],
-      thresholdPercentage: 20,
-      customCategories: [],
-      budgetPeriod: "monthly",
-      budgetAmount: 0,
-      lastBudgetReset: new Date().toISOString(),
-      isActive: true,
-      currentStreak: 0,
-      lastOpenedDate: new Date().toISOString(),
-      savings: 0,
-      savingsLocked: false,
-      notificationsEnabled: false,
-      dayEndTime: "22:00",
-      lastNotificationDate: "",
+      ...createDefaultUserData(username, password),
       securityQuestions: {
         nickname: nickname.toLowerCase().trim(),
         birthdate: birthdate.trim(),
@@ -65,8 +49,8 @@ export function SecurityQuestionsSetup({ username, password, onComplete }: Secur
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-md">
+    <div className="mobile-shell mobile-canvas justify-center px-5 py-8">
+      <Card className="mx-auto w-full max-w-sm">
         <CardHeader>
           <div className="flex items-center gap-2 mb-2">
             <Shield className="w-6 h-6 text-primary" />

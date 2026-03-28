@@ -112,18 +112,48 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-20 h-20 bg-primary rounded-full flex items-center justify-center mb-4">
-            <Wallet className="w-10 h-10 text-primary-foreground" />
+    <div className="mobile-shell mobile-canvas justify-center px-5 py-8">
+      <div className="mx-auto w-full max-w-sm space-y-6">
+        <div className="flex flex-col items-center text-center">
+          <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-primary shadow-[0_22px_44px_-24px_rgba(3,2,19,0.95)]">
+            <Wallet className="h-10 w-10 text-primary-foreground" />
           </div>
-          <h1 className="text-4xl mb-2">Expy</h1>
-          <p className="text-muted-foreground text-center">Track your expenses with ease</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Personal Finance</p>
+          <h1 className="mt-2 text-[2.4rem] font-semibold tracking-[-0.05em]">Expy</h1>
+          <p className="mt-3 max-w-xs text-sm leading-6 text-muted-foreground">
+            Track your expenses, savings, and separate wallets with a cleaner mobile routine.
+          </p>
         </div>
 
         <Card>
-          <CardContent className="pt-6">
+          <CardContent className="space-y-5 pt-5">
+            <div className="grid grid-cols-2 rounded-2xl border border-border/70 bg-muted/30 p-1">
+              <Button
+                type="button"
+                variant={isSignup ? "ghost" : "default"}
+                className="h-10"
+                onClick={() => {
+                  setIsSignup(false);
+                  setUsername("");
+                  setPassword("");
+                }}
+              >
+                Log In
+              </Button>
+              <Button
+                type="button"
+                variant={isSignup ? "default" : "ghost"}
+                className="h-10"
+                onClick={() => {
+                  setIsSignup(true);
+                  setUsername("");
+                  setPassword("");
+                }}
+              >
+                Sign Up
+              </Button>
+            </div>
+
             <form onSubmit={isSignup ? handleSignup : handleLogin} className="space-y-4">
               <div className="space-y-4">
                 <FloatingLabelInput
@@ -142,12 +172,9 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
               </div>
               
               {isSignup && (
-                <div className="text-xs text-muted-foreground space-y-1 -mt-2">
-                  <p>• Username: Max 10 characters</p>
-                  <p>• Password: Min 6 characters, must include:</p>
-                  <p className="ml-4">- At least one capital letter</p>
-                  <p className="ml-4">- At least one number</p>
-                  <p className="ml-4">- At least one special character</p>
+                <div className="space-y-1.5 rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs leading-5 text-muted-foreground">
+                  <p>Username: max 10 characters.</p>
+                  <p>Password: minimum 6 characters with one capital letter, one number, and one special character.</p>
                 </div>
               )}
               
@@ -156,22 +183,8 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
               </Button>
             </form>
 
-            <div className="mt-6 pt-6 border-t">
-              <Button 
-                variant="outline" 
-                className="w-full h-12 text-base"
-                onClick={() => {
-                  setIsSignup(!isSignup);
-                  setUsername("");
-                  setPassword("");
-                }}
-              >
-                {isSignup ? "Already have an account? Log In" : "Create New Account"}
-              </Button>
-            </div>
-
             {!isSignup && (
-              <div className="mt-4">
+              <div>
                 <Button 
                   variant="link" 
                   className="w-full text-sm text-muted-foreground hover:text-primary"

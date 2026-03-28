@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
+import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "./ui/drawer";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
@@ -53,16 +53,14 @@ export function ManageCategoriesDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>Manage Categories</DialogTitle>
-          <DialogDescription>
-            Add or remove custom expense categories
-          </DialogDescription>
-        </DialogHeader>
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Manage Categories</DrawerTitle>
+          <DrawerDescription>Keep expense categories clean across the app.</DrawerDescription>
+        </DrawerHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-5 overflow-y-auto px-5 pb-2">
           <div>
             <Label className="text-sm text-muted-foreground mb-2 block">Default Categories</Label>
             <div className="flex flex-wrap gap-2">
@@ -77,7 +75,9 @@ export function ManageCategoriesDialog({
           <div>
             <Label className="text-sm text-muted-foreground mb-2 block">Custom Categories</Label>
             {customCategories.length === 0 ? (
-              <p className="text-sm text-muted-foreground italic">No custom categories yet</p>
+              <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                No custom categories yet
+              </div>
             ) : (
               <div className="flex flex-wrap gap-2">
                 {customCategories.map((category) => (
@@ -116,11 +116,13 @@ export function ManageCategoriesDialog({
             </div>
           </div>
 
-          <Button onClick={() => onOpenChange(false)} className="w-full">
-            Done
-          </Button>
+          <DrawerFooter className="px-0 pt-3">
+            <Button onClick={() => onOpenChange(false)} className="w-full">
+              Done
+            </Button>
+          </DrawerFooter>
         </div>
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   );
 }

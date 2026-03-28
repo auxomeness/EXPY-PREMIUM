@@ -1,22 +1,26 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
+import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "./ui/drawer";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { toast } from "sonner";
+import type { CurrencySettings } from "../App";
+import { convertToBaseCurrency, formatUserCurrency } from "../utils/currency";
 
 type WithdrawSavingsDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onWithdraw: (amount: number) => void;
   currentSavings: number;
+  currencySettings: CurrencySettings;
 };
 
 export function WithdrawSavingsDialog({ 
   open, 
   onOpenChange, 
   onWithdraw,
-  currentSavings 
+  currentSavings,
+  currencySettings,
 }: WithdrawSavingsDialogProps) {
   const [amount, setAmount] = useState("");
 
@@ -30,7 +34,7 @@ export function WithdrawSavingsDialog({
       return;
     }
 
-    if (amountNum > currentSavings) {
+    if (convertToBaseCurrency(amountNum, currencySettings) > currentSavings) {
       toast.error("Insufficient savings");
       return;
     }
@@ -42,17 +46,15 @@ export function WithdrawSavingsDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Withdraw from Savings</DialogTitle>
-          <DialogDescription>
-            Transfer money from your savings back to your balance
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Withdraw from Savings</DrawerTitle>
+          <DrawerDescription>Move money back into your main balance.</DrawerDescription>
+        </DrawerHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 px-5 pb-2">
           <div className="space-y-2">
-            <Label htmlFor="withdraw-amount">Amount (₱)</Label>
+            <Label htmlFor="withdraw-amount">Amount ({currencySettings.preferredCurrency})</Label>
             <Input
               id="withdraw-amount"
               type="number"
@@ -63,20 +65,22 @@ export function WithdrawSavingsDialog({
               autoFocus
             />
             <p className="text-xs text-muted-foreground">
-              Current savings: ₱{currentSavings.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              Current savings: {formatUserCurrency(currentSavings, currencySettings)}
             </p>
           </div>
 
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1">
-              Withdraw
-            </Button>
-          </div>
+          <DrawerFooter className="px-0 pt-3">
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1">
+                Withdraw
+              </Button>
+            </div>
+          </DrawerFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   );
 }

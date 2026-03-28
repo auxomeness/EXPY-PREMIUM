@@ -4,6 +4,7 @@ import { Button } from "./ui/button";
 import { FloatingLabelInput } from "./FloatingLabelInput";
 import { toast } from "sonner";
 import { KeyRound, ArrowLeft, Lock } from "lucide-react";
+import type { UserData } from "../App";
 
 type ForgotPasswordProps = {
   onBack: () => void;
@@ -19,7 +20,7 @@ export function ForgotPassword({ onBack, onSuccess }: ForgotPasswordProps) {
   const [favoriteColor, setFavoriteColor] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
 
   const handleUsernameSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,8 +122,8 @@ export function ForgotPassword({ onBack, onSuccess }: ForgotPasswordProps) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-      <Card className="w-full max-w-md">
+    <div className="mobile-shell mobile-canvas justify-center px-5 py-8">
+      <Card className="mx-auto w-full max-w-sm">
         <CardHeader>
           <div className="flex items-center gap-2 mb-2">
             <KeyRound className="w-6 h-6 text-primary" />

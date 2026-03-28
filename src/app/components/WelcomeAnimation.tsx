@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { motion } from "motion/react";
 import { Wallet } from "lucide-react";
 
@@ -6,14 +7,17 @@ type WelcomeAnimationProps = {
 };
 
 export function WelcomeAnimation({ onComplete }: WelcomeAnimationProps) {
-  // Auto-complete after animation duration
-  setTimeout(() => {
-    onComplete();
-  }, 1500);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      onComplete();
+    }, 1500);
+
+    return () => window.clearTimeout(timer);
+  }, [onComplete]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="mobile-shell mobile-canvas items-center justify-center px-5 py-8">
+      <div className="w-full max-w-sm">
         <motion.div
           initial={{ opacity: 0, scale: 0.8 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -25,7 +29,7 @@ export function WelcomeAnimation({ onComplete }: WelcomeAnimationProps) {
             initial={{ scale: 0 }}
             animate={{ scale: 1 }}
             transition={{ duration: 0.5, ease: "easeOut" }}
-            className="w-24 h-24 bg-primary rounded-full flex items-center justify-center mb-6"
+            className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-primary shadow-[0_22px_44px_-24px_rgba(3,2,19,0.95)]"
           >
             <Wallet className="w-12 h-12 text-primary-foreground" />
           </motion.div>
@@ -33,7 +37,7 @@ export function WelcomeAnimation({ onComplete }: WelcomeAnimationProps) {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-4xl text-center whitespace-nowrap"
+            className="text-center whitespace-nowrap text-4xl font-semibold tracking-[-0.04em]"
             style={{ fontSize: 'clamp(1.5rem, 8vw, 2.25rem)' }}
           >
             Welcome to Expy

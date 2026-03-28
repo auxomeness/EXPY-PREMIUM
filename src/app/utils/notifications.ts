@@ -1,4 +1,6 @@
 import type { UserData } from "../App";
+import { formatUserCurrency } from "./currency";
+import { filterExpensesForAnalysis, isDateExempt } from "./finance";
 
 export function checkAndSendDailyNotification(userData: UserData) {
   // Check if notifications are enabled
@@ -38,6 +40,11 @@ export function checkAndSendDailyNotification(userData: UserData) {
 
 function sendDailyNotification(userData: UserData) {
   const currentDate = new Date().toISOString().split("T")[0];
+  const todayExcluded = isDateExempt(new Date(), userData.computationExemptions);
+
+  if (todayExcluded) {
+    return;
+  }
 
   // Calculate daily budget based on budget period
   let dailyBudget = 0;
@@ -50,9 +57,9 @@ function sendDailyNotification(userData: UserData) {
   }
 
   // Get today's expenses
-  const todayExpenses = userData.expenses.filter(expense => {
-    const expenseDate = new Date(expense.date).toISOString().split("T")[0];
-    return expenseDate === currentDate;
+  const todayExpenses = filterExpensesForAnalysis(userData.expenses, userData.computationExemptions, {
+    start: new Date(`${currentDate}T00:00:00`),
+    end: new Date(`${currentDate}T23:59:59.999`),
   });
 
   const todaySpent = todayExpenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -65,7 +72,7 @@ function sendDailyNotification(userData: UserData) {
   if (remainingForDay > 0) {
     // User has money left
     title = "Money Left Today!";
-    body = `You still have ₱${remainingForDay.toFixed(2)} left for the day. Move to savings or recompute daily balance?`;
+    body = `You still have ${formatUserCurrency(remainingForDay, userData.currencySettings)} left for the day. Move to savings or recompute daily balance?`;
     icon = "💵";
   } else if (remainingForDay < 0) {
     // User overspent

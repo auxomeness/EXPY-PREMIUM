@@ -1,20 +1,28 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
+import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "./ui/drawer";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { toast } from "sonner";
 import { formatCurrency } from "../utils/currency";
-import type { BudgetPeriod } from "../App";
+import type { BudgetPeriod, SupportedCurrency } from "../App";
 
 type AddMoneyDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAddMoney: (amount: number, period: BudgetPeriod) => void;
+  currencyCode: SupportedCurrency;
+  accountLabel?: string;
 };
 
-export function AddMoneyDialog({ open, onOpenChange, onAddMoney }: AddMoneyDialogProps) {
+export function AddMoneyDialog({
+  open,
+  onOpenChange,
+  onAddMoney,
+  currencyCode,
+  accountLabel = "balance",
+}: AddMoneyDialogProps) {
   const [amount, setAmount] = useState("");
   const [period, setPeriod] = useState<BudgetPeriod>("monthly");
 
@@ -31,21 +39,19 @@ export function AddMoneyDialog({ open, onOpenChange, onAddMoney }: AddMoneyDialo
     onAddMoney(amountNum, period);
     setAmount("");
     setPeriod("monthly");
-    toast.success(`${formatCurrency(amountNum)} added to your ${period} balance`);
+    toast.success(`${formatCurrency(amountNum, currencyCode)} added to ${accountLabel}`);
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add Money</DialogTitle>
-          <DialogDescription>
-            Add funds to your account balance
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Add Money</DrawerTitle>
+          <DrawerDescription>Add funds to this balance.</DrawerDescription>
+        </DrawerHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 px-5 pb-2">
           <div className="space-y-2">
-            <Label htmlFor="amount">Amount (₱)</Label>
+            <Label htmlFor="amount">Amount ({currencyCode})</Label>
             <Input
               id="amount"
               type="number"
@@ -75,17 +81,19 @@ export function AddMoneyDialog({ open, onOpenChange, onAddMoney }: AddMoneyDialo
               {period === "monthly" && "This amount is for one month (30 days)"}
             </p>
           </div>
-          
-          <div className="flex gap-2">
+
+          <DrawerFooter className="px-0 pt-3">
+            <div className="flex gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
               Cancel
             </Button>
             <Button type="submit" className="flex-1">
-              Add Money
+              Add Money to {accountLabel}
             </Button>
-          </div>
+            </div>
+          </DrawerFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   );
 }

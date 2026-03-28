@@ -1,22 +1,26 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
+import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "./ui/drawer";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { toast } from "sonner";
+import type { CurrencySettings } from "../App";
+import { convertToBaseCurrency, formatUserCurrency } from "../utils/currency";
 
 type AddSavingsDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onAddSavings: (amount: number) => void;
   currentBalance: number;
+  currencySettings: CurrencySettings;
 };
 
 export function AddSavingsDialog({ 
   open, 
   onOpenChange, 
   onAddSavings,
-  currentBalance 
+  currentBalance,
+  currencySettings,
 }: AddSavingsDialogProps) {
   const [amount, setAmount] = useState("");
 
@@ -30,7 +34,7 @@ export function AddSavingsDialog({
       return;
     }
 
-    if (amountNum > currentBalance) {
+    if (convertToBaseCurrency(amountNum, currencySettings) > currentBalance) {
       toast.error("Insufficient balance");
       return;
     }
@@ -42,17 +46,15 @@ export function AddSavingsDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add to Savings</DialogTitle>
-          <DialogDescription>
-            Transfer money from your balance to savings
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Add to Savings</DrawerTitle>
+          <DrawerDescription>Move money into savings.</DrawerDescription>
+        </DrawerHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 px-5 pb-2">
           <div className="space-y-2">
-            <Label htmlFor="savings-amount">Amount (₱)</Label>
+            <Label htmlFor="savings-amount">Amount ({currencySettings.preferredCurrency})</Label>
             <Input
               id="savings-amount"
               type="number"
@@ -63,20 +65,22 @@ export function AddSavingsDialog({
               autoFocus
             />
             <p className="text-xs text-muted-foreground">
-              Current balance: ₱{currentBalance.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              Current balance: {formatUserCurrency(currentBalance, currencySettings)}
             </p>
           </div>
 
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1">
-              Add to Savings
-            </Button>
-          </div>
+          <DrawerFooter className="px-0 pt-3">
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1">
+                Add to Savings
+              </Button>
+            </div>
+          </DrawerFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   );
 }

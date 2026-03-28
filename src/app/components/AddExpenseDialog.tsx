@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Button } from "./ui/button";
+import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from "./ui/drawer";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { toast } from "sonner";
 import { Plus } from "lucide-react";
-import type { Expense } from "../App";
+import type { CurrencySettings, Expense } from "../App";
+import { convertToBaseCurrency, formatUserCurrency } from "../utils/currency";
 
 type AddExpenseDialogProps = {
   open: boolean;
@@ -15,6 +16,8 @@ type AddExpenseDialogProps = {
   currentBalance: number;
   customCategories: string[];
   onManageCategories: () => void;
+  currencySettings: CurrencySettings;
+  accountLabel?: string;
 };
 
 const DEFAULT_CATEGORIES = ["leisure", "bills", "transportation", "food", "other"];
@@ -27,7 +30,9 @@ export function AddExpenseDialog({
   onAddExpense, 
   currentBalance,
   customCategories,
-  onManageCategories 
+  onManageCategories,
+  currencySettings,
+  accountLabel = "balance",
 }: AddExpenseDialogProps) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>("food");
@@ -45,8 +50,8 @@ export function AddExpenseDialog({
       return;
     }
 
-    if (amountNum > currentBalance) {
-      toast.error("Insufficient balance");
+    if (convertToBaseCurrency(amountNum, currencySettings) > currentBalance) {
+      toast.error(`Insufficient funds in ${accountLabel}`);
       return;
     }
 
@@ -64,17 +69,15 @@ export function AddExpenseDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Add Expense</DialogTitle>
-          <DialogDescription>
-            Record a new expense and deduct it from your balance
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
+    <Drawer open={open} onOpenChange={onOpenChange}>
+      <DrawerContent>
+        <DrawerHeader>
+          <DrawerTitle>Add Expense</DrawerTitle>
+          <DrawerDescription>Record a new expense for this balance.</DrawerDescription>
+        </DrawerHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 px-5 pb-2">
           <div className="space-y-2">
-            <Label htmlFor="expense-amount">Amount (₱)</Label>
+            <Label htmlFor="expense-amount">Amount ({currencySettings.preferredCurrency})</Label>
             <Input
               id="expense-amount"
               type="number"
@@ -125,18 +128,23 @@ export function AddExpenseDialog({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
+            <p className="text-xs text-muted-foreground">
+              Available in {accountLabel}: {formatUserCurrency(currentBalance, currencySettings)}
+            </p>
           </div>
 
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
-              Cancel
-            </Button>
-            <Button type="submit" className="flex-1">
-              Add Expense
-            </Button>
-          </div>
+          <DrawerFooter className="px-0 pt-3">
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1">
+                Add Expense
+              </Button>
+            </div>
+          </DrawerFooter>
         </form>
-      </DialogContent>
-    </Dialog>
+      </DrawerContent>
+    </Drawer>
   );
 }

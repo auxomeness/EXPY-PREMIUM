@@ -8,9 +8,10 @@ import type { UserData } from "../App";
 
 type BadgesDisplayProps = {
   userData: UserData;
+  variant?: "default" | "dashboard";
 };
 
-export function BadgesDisplay({ userData }: BadgesDisplayProps) {
+export function BadgesDisplay({ userData, variant = "default" }: BadgesDisplayProps) {
   const [open, setOpen] = useState(false);
   const badges = calculateBadges(userData);
   const earnedCount = badges.filter(b => b.earned).length;
@@ -34,12 +35,29 @@ export function BadgesDisplay({ userData }: BadgesDisplayProps) {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <button className="flex items-center gap-1.5 bg-primary/10 text-primary px-3 py-1.5 rounded-full border border-primary/20 hover:bg-primary/20 transition-colors">
-          <Award className="w-4 h-4" />
-          <span className="text-sm font-bold">{earnedCount}</span>
-        </button>
+        {variant === "dashboard" ? (
+          <button className="header-stat-card transition-colors hover:bg-accent/40">
+            <div className="header-stat-icon">
+              <Award className="h-4 w-4" />
+            </div>
+            <div className="text-left">
+              <p className="header-stat-label">Badges</p>
+              <p className="header-stat-value">{earnedCount}</p>
+            </div>
+          </button>
+        ) : (
+          <button className="header-stat-card transition-colors hover:bg-accent/40">
+            <div className="header-stat-icon">
+              <Award className="h-4 w-4" />
+            </div>
+            <div className="text-left">
+              <p className="header-stat-label">Achievements</p>
+              <p className="header-stat-value">{earnedCount}</p>
+            </div>
+          </button>
+        )}
       </SheetTrigger>
-      <SheetContent side="bottom" className="h-[70vh] rounded-t-3xl p-6">
+      <SheetContent side="bottom" className="h-[72vh] rounded-t-[30px]">
         <SheetHeader className="mb-4">
           <SheetTitle className="flex items-center gap-2">
             <Award className="w-5 h-5 text-primary" />
@@ -50,7 +68,7 @@ export function BadgesDisplay({ userData }: BadgesDisplayProps) {
           </SheetDescription>
         </SheetHeader>
 
-        <div className="space-y-4 overflow-auto h-[calc(70vh-100px)] pb-4">
+        <div className="h-[calc(72vh-98px)] space-y-5 overflow-auto px-5 pb-4">
           {/* Streak Badges */}
           <div>
             <div className="flex items-center gap-2 mb-2">

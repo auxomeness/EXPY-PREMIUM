@@ -41,13 +41,13 @@ export function FloatingLabelInput({
         maxLength={maxLength}
       />
       <label
-        className={`absolute left-3 transition-all duration-200 pointer-events-none font-bold ${
+        className={`pointer-events-none absolute left-3 transition-all duration-200 ${
           isActive
-            ? "top-1.5 text-[9px] text-muted-foreground"
-            : "top-1/2 -translate-y-1/2 text-xs text-muted-foreground"
+            ? "top-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground"
+            : "top-1/2 -translate-y-1/2 text-sm font-medium text-muted-foreground"
         }`}
       >
-        {label.toUpperCase()}
+        {isActive ? label.toUpperCase() : label}
       </label>
       {isPassword && value.length > 0 && (
         <button

@@ -6,6 +6,10 @@ import { Label } from "./ui/label";
 import { Sun, Moon, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { toast } from "sonner";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import type { SupportedCurrency } from "../App";
+import { SUPPORTED_CURRENCIES } from "../utils/currency";
+import { createDefaultCurrencySettings } from "../utils/userData";
 
 type OnboardingScreenProps = {
   username: string;
@@ -16,6 +20,7 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
   const [step, setStep] = useState(1);
   const [displayName, setDisplayName] = useState("");
   const [balance, setBalance] = useState("");
+  const [currency, setCurrency] = useState<SupportedCurrency>("PHP");
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
@@ -50,12 +55,16 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
     const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
     users[username].balance = balanceAmount;
     users[username].initialBalance = balanceAmount;
+    users[username].currencySettings = createDefaultCurrencySettings(currency);
     localStorage.setItem("expy_users", JSON.stringify(users));
     
     setStep(3);
   };
 
   const handleSkipBalance = () => {
+    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
+    users[username].currencySettings = createDefaultCurrencySettings(currency);
+    localStorage.setItem("expy_users", JSON.stringify(users));
     setStep(3);
   };
 
@@ -79,9 +88,28 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
     }, 1500);
   };
 
+  const totalSteps = 4;
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-primary/5 to-background flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <div className="mobile-shell mobile-canvas justify-center px-5 py-8">
+      <div className="mx-auto w-full max-w-sm space-y-5">
+        {step < 4 && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              <span>Getting Started</span>
+              <span>Step {step} of {totalSteps - 1}</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {[1, 2, 3].map((index) => (
+                <div key={index} className="h-1.5 rounded-full bg-muted">
+                  <div
+                    className={`h-full rounded-full transition-all ${step >= index ? "bg-primary" : "bg-transparent"}`}
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         <AnimatePresence mode="wait">
           {step === 1 && (
             <motion.div
@@ -134,7 +162,22 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
                 <CardContent>
                   <form onSubmit={handleBalanceSubmit} className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="balance">Balance (₱)</Label>
+                      <Label htmlFor="currency">Default Currency</Label>
+                      <Select value={currency} onValueChange={(value) => setCurrency(value as SupportedCurrency)}>
+                        <SelectTrigger id="currency" className="h-12">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-80">
+                          {SUPPORTED_CURRENCIES.map((option) => (
+                            <SelectItem key={option.code} value={option.code}>
+                              {option.code} • {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="balance">Balance ({currency})</Label>
                       <Input
                         id="balance"
                         type="number"
@@ -183,7 +226,7 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
                     <button
                       type="button"
                       onClick={() => handleThemeChoice(false)}
-                      className={`relative p-6 rounded-lg border-2 transition-all ${
+                      className={`relative rounded-[24px] border-2 p-6 transition-all ${
                         !isDarkMode 
                           ? "border-primary bg-primary/5" 
                           : "border-border hover:border-primary/50"
@@ -209,7 +252,7 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
                     <button
                       type="button"
                       onClick={() => handleThemeChoice(true)}
-                      className={`relative p-6 rounded-lg border-2 transition-all ${
+                      className={`relative rounded-[24px] border-2 p-6 transition-all ${
                         isDarkMode 
                           ? "border-primary bg-primary/5" 
                           : "border-border hover:border-primary/50"
@@ -254,7 +297,7 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
                 initial={{ rotate: 0 }}
                 animate={{ rotate: 360 }}
                 transition={{ duration: 1, ease: "easeInOut" }}
-                className="w-24 h-24 bg-primary rounded-full flex items-center justify-center mb-6"
+                className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-primary shadow-[0_22px_44px_-24px_rgba(3,2,19,0.95)]"
               >
                 <Sparkles className="w-12 h-12 text-primary-foreground" />
               </motion.div>

@@ -1,4 +1,5 @@
-import type { UserData, Expense } from "../App";
+import type { Expense, Transaction, UserData } from "../App";
+import { createDefaultCurrencySettings, createDefaultUserData } from "./userData";
 
 export function createDemoAccount() {
   const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
@@ -96,23 +97,29 @@ export function createDemoAccount() {
   const streakStartDate = new Date(today);
   streakStartDate.setDate(streakStartDate.getDate() - 1095);
   
+  const transactions: Transaction[] = expenses
+    .map((expense) => ({
+      id: expense.id,
+      type: "expense" as const,
+      amount: expense.amount,
+      category: expense.category,
+      description: expense.description,
+      date: expense.date,
+    }))
+    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
+
   const demoUser: UserData = {
-    username: demoUsername,
-    password: demoPassword,
+    ...createDefaultUserData(demoUsername, demoPassword),
     displayName: "demo",
-    balance: 75000, // Good balance
+    balance: 75000,
     initialBalance: 75000,
-    expenses: expenses,
-    thresholdPercentage: 20,
+    expenses,
+    transactions,
     customCategories: ["Investments", "Health", "Education"],
-    budgetPeriod: "monthly",
-    budgetAmount: 15000, // ₱15,000 per month budget (₱180k/year vs ~₱79k spent = good discipline)
-    lastBudgetReset: today.toISOString(),
-    isActive: true,
-    currentStreak: 1095, // 3 years streak (unlocks all streak badges)
+    budgetAmount: 15000,
+    currentStreak: 1095,
     lastOpenedDate: today.toISOString(),
-    savings: 30000, // ₱30,000 in savings (unlocks all savings badges)
-    savingsLocked: false,
+    savings: 30000,
     notificationsEnabled: true,
     dayEndTime: "23:59",
     lastNotificationDate: today.toISOString(),
@@ -120,8 +127,9 @@ export function createDemoAccount() {
       nickname: "Demo",
       birthdate: "2000-01-01",
       favoriteColor: "Blue",
-      secretCode: "1234"
-    }
+      secretCode: "1234",
+    },
+    currencySettings: createDefaultCurrencySettings("PHP"),
   };
   
   users[demoUsername] = demoUser;
