@@ -5,18 +5,47 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [
-    // The React and Tailwind plugins are both required for Make, even if
-    // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
   ],
   resolve: {
     alias: {
-      // Alias @ to the src directory
       '@': path.resolve(__dirname, './src'),
     },
   },
+  build: {
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined;
+          }
 
-  // File types to support raw imports. Never add .css, .tsx, or .ts files to this.
+          if (id.includes('@radix-ui') || id.includes('vaul')) {
+            return 'radix-vendor';
+          }
+
+          if (id.includes('recharts')) {
+            return 'charts';
+          }
+
+          if (id.includes('@mui') || id.includes('@emotion')) {
+            return 'mui-vendor';
+          }
+
+          if (id.includes('motion') || id.includes('framer-motion')) {
+            return 'motion-vendor';
+          }
+
+          if (id.includes('lucide-react')) {
+            return 'icons';
+          }
+
+          return 'vendor';
+        },
+      },
+    },
+  },
   assetsInclude: ['**/*.svg', '**/*.csv'],
 })

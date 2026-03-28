@@ -1,13 +1,4 @@
-import { useState, useEffect } from "react";
-import { AuthScreen } from "./components/AuthScreen";
-import { SecurityQuestionsSetup } from "./components/SecurityQuestionsSetup";
-import { OnboardingScreen } from "./components/OnboardingScreen";
-import { WelcomeAnimation } from "./components/WelcomeAnimation";
-import { Dashboard } from "./components/Dashboard";
-import { ExpenseHistory } from "./components/ExpenseHistory";
-import { Savings } from "./components/Savings";
-import { Settings } from "./components/Settings";
-import { Wallets } from "./components/Wallets";
+import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Home, History, PiggyBank, SettingsIcon, Wallet, type LucideIcon } from "lucide-react";
 import { Toaster } from "./components/ui/sonner";
 import { migrateUserData } from "./utils/migration";
@@ -151,6 +142,30 @@ const APP_TABS: Array<{
   { id: "settings", label: "Settings", icon: SettingsIcon },
 ];
 
+const AuthScreen = lazy(() => import("./components/AuthScreen").then((module) => ({ default: module.AuthScreen })));
+const SecurityQuestionsSetup = lazy(() =>
+  import("./components/SecurityQuestionsSetup").then((module) => ({ default: module.SecurityQuestionsSetup })),
+);
+const OnboardingScreen = lazy(() => import("./components/OnboardingScreen").then((module) => ({ default: module.OnboardingScreen })));
+const WelcomeAnimation = lazy(() => import("./components/WelcomeAnimation").then((module) => ({ default: module.WelcomeAnimation })));
+const Dashboard = lazy(() => import("./components/Dashboard").then((module) => ({ default: module.Dashboard })));
+const ExpenseHistory = lazy(() => import("./components/ExpenseHistory").then((module) => ({ default: module.ExpenseHistory })));
+const Savings = lazy(() => import("./components/Savings").then((module) => ({ default: module.Savings })));
+const Settings = lazy(() => import("./components/Settings").then((module) => ({ default: module.Settings })));
+const Wallets = lazy(() => import("./components/Wallets").then((module) => ({ default: module.Wallets })));
+
+function AppLoadingShell() {
+  return (
+    <div className="mobile-shell mobile-canvas">
+      <div className="flex min-h-screen items-center justify-center px-6">
+        <div className="app-empty-state w-full max-w-[320px] bg-card/82">
+          <p className="text-sm font-medium text-foreground">Loading...</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<string | null>(null);
   const [onboardingUser, setOnboardingUser] = useState<string | null>(null);
@@ -285,48 +300,24 @@ export default function App() {
     setActiveTab("wallets");
   };
 
+  let screen: ReactNode;
+
   if (showWelcome) {
-    return (
-      <>
-        <WelcomeAnimation onComplete={handleWelcomeComplete} />
-        <Toaster />
-      </>
+    screen = <WelcomeAnimation onComplete={handleWelcomeComplete} />;
+  } else if (securityQuestionsUser) {
+    screen = (
+      <SecurityQuestionsSetup
+        username={securityQuestionsUser.username}
+        password={securityQuestionsUser.password}
+        onComplete={handleSecurityQuestionsComplete}
+      />
     );
-  }
-
-  if (securityQuestionsUser) {
-    return (
-      <>
-        <SecurityQuestionsSetup 
-          username={securityQuestionsUser.username}
-          password={securityQuestionsUser.password}
-          onComplete={handleSecurityQuestionsComplete}
-        />
-        <Toaster />
-      </>
-    );
-  }
-
-  if (onboardingUser) {
-    return (
-      <>
-        <OnboardingScreen username={onboardingUser} onComplete={handleOnboardingComplete} />
-        <Toaster />
-      </>
-    );
-  }
-
-  if (!currentUser) {
-    return (
-      <>
-        <AuthScreen onLogin={handleLogin} onSignup={handleSignup} />
-        <Toaster />
-      </>
-    );
-  }
-
-  return (
-    <>
+  } else if (onboardingUser) {
+    screen = <OnboardingScreen username={onboardingUser} onComplete={handleOnboardingComplete} />;
+  } else if (!currentUser) {
+    screen = <AuthScreen onLogin={handleLogin} onSignup={handleSignup} />;
+  } else {
+    screen = (
       <div className="mobile-shell mobile-canvas">
         <div className="pointer-events-none absolute inset-x-0 top-0 h-36 bg-gradient-to-b from-background via-background/90 to-transparent" />
 
@@ -381,6 +372,12 @@ export default function App() {
           </nav>
         </div>
       </div>
+    );
+  }
+
+  return (
+    <>
+      <Suspense fallback={<AppLoadingShell />}>{screen}</Suspense>
       <Toaster />
     </>
   );
