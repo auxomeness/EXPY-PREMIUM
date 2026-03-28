@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { AnimatePresence } from "motion/react";
 import {
   AlertCircle,
@@ -6,7 +6,10 @@ import {
   Calendar,
   CalendarDays,
   CalendarRange,
+  ChevronDown,
   Plus,
+  Search,
+  SlidersHorizontal,
   TrendingDown,
   Wallet,
   X,
@@ -42,9 +45,10 @@ import { ManageCategoriesDialog } from "./ManageCategoriesDialog";
 import { UndoNotification } from "./UndoNotification";
 import { WalletManagerDialog } from "./WalletManagerDialog";
 import { Alert, AlertDescription } from "./ui/alert";
-import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
+import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
 type WalletsProps = {
@@ -53,34 +57,23 @@ type WalletsProps = {
   onActiveAccountChange: (activeAccount: ActiveAccount) => void;
 };
 
-const categoryColors: Record<string, string> = {
-  leisure: "bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900 dark:text-purple-200 dark:border-purple-800",
-  bills: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900 dark:text-red-200 dark:border-red-800",
-  transportation: "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900 dark:text-blue-200 dark:border-blue-800",
-  food: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200 dark:border-green-800",
-  other: "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600",
-};
-
 const transactionTypeInfo = {
   expense: {
     label: "Expense",
     icon: TrendingDown,
     color: "text-red-600 dark:text-red-400",
-    badgeClass: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900 dark:text-red-200 dark:border-red-800",
     sign: "-",
   },
   add_money: {
     label: "Add Money",
     icon: Wallet,
     color: "text-green-600 dark:text-green-400",
-    badgeClass: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900 dark:text-green-200 dark:border-green-800",
     sign: "+",
   },
 } satisfies Record<"expense" | "add_money", {
   label: string;
   icon: LucideIcon;
   color: string;
-  badgeClass: string;
   sign: string;
 }>;
 
@@ -101,8 +94,22 @@ function getDateRange(filterPeriod: string) {
   }
 }
 
-function getCategoryColor(category: string) {
-  return categoryColors[category.toLowerCase()] || categoryColors.other;
+function formatDisplayLabel(value: string) {
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function getWalletTransactionTitle(transaction: Transaction) {
+  if (transaction.description?.trim()) {
+    return transaction.description.trim();
+  }
+
+  if (transaction.type === "expense") {
+    return transaction.category ? `${formatDisplayLabel(transaction.category)} Expense` : "Expense";
+  }
+
+  return "Money Added";
 }
 
 const PERIOD_OPTIONS = [
@@ -132,10 +139,13 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
   const [filterPeriod, setFilterPeriod] = useState<string>("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [undoSnapshot, setUndoSnapshot] = useState<{
     message: string;
     previousUserData: UserData;
   } | null>(null);
+  const deferredSearchQuery = useDeferredValue(searchQuery);
 
   useEffect(() => {
     const loadUserData = () => {
@@ -223,7 +233,7 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
     });
   }, [currentWallet, range.end, range.start]);
 
-  const filteredTransactions = useMemo(() => {
+  const typeFilteredTransactions = useMemo(() => {
     if (typeFilter === "all") {
       return transactionsInPeriod;
     }
@@ -243,6 +253,50 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
     return transactionsInPeriod;
   }, [categoryFilter, transactionsInPeriod, typeFilter]);
 
+  const filteredTransactions = useMemo(() => {
+    const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
+
+    if (!normalizedQuery) {
+      return typeFilteredTransactions;
+    }
+
+    return typeFilteredTransactions.filter((transaction) => {
+      const transactionDate = new Date(transaction.date);
+      const dateTokens = [
+        transaction.date,
+        transactionDate.toLocaleDateString(),
+        transactionDate.toLocaleDateString("en-US", {
+          month: "long",
+          day: "numeric",
+          year: "numeric",
+        }),
+        transactionDate.toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }),
+        transactionDate.toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      ];
+
+      const searchIndex = [
+        transaction.description ?? "",
+        transaction.category ?? "",
+        transactionTypeInfo[transaction.type === "expense" ? "expense" : "add_money"].label,
+        transaction.type.replaceAll("_", " "),
+        currentWallet.name,
+        ...dateTokens,
+        isDateExempt(transaction.date, userData.computationExemptions) ? "exempted day" : "",
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      return searchIndex.includes(normalizedQuery);
+    });
+  }, [currentWallet?.name, deferredSearchQuery, typeFilteredTransactions, userData.computationExemptions]);
+
   const analysisTransactions = useMemo(
     () => filterTransactionsForAnalysis(filteredTransactions, userData.computationExemptions, range),
     [filteredTransactions, range, userData.computationExemptions],
@@ -257,6 +311,18 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
   const exemptTransactionCount = filteredTransactions.length - analysisTransactions.length;
+  const hasAdvancedFilters = typeFilter !== "all" || categoryFilter !== "all";
+  const activeFilterSummary = (() => {
+    if (typeFilter === "all") {
+      return "All types";
+    }
+
+    if (typeFilter === "expense") {
+      return categoryFilter === "all" ? "Expenses" : `Expenses • ${formatDisplayLabel(categoryFilter)}`;
+    }
+
+    return transactionTypeInfo.add_money.label;
+  })();
 
   const persistCurrentWallet = (updater: (currentUserData: UserData) => UserData, message?: string) => {
     const previousUserData = userData;
@@ -600,35 +666,90 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
           </div>
 
           <div className="space-y-3">
-            <FilterChipGroup options={PERIOD_OPTIONS} value={filterPeriod} onChange={setFilterPeriod} />
-            <FilterChipGroup options={TYPE_OPTIONS} value={typeFilter} onChange={setTypeFilter} />
-
-            {typeFilter === "expense" && (
-              <div className="rounded-2xl border border-border/60 bg-muted/25 p-3">
-                <Select value={categoryFilter} onValueChange={setCategoryFilter}>
-                  <SelectTrigger className="border-0 bg-transparent px-0 shadow-none">
-                    <SelectValue placeholder="All expense categories" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All expense categories</SelectItem>
-                    <SelectItem value="leisure">Leisure</SelectItem>
-                    <SelectItem value="bills">Bills</SelectItem>
-                    <SelectItem value="transportation">Transportation</SelectItem>
-                    <SelectItem value="food">Food</SelectItem>
-                    <SelectItem value="other">Other</SelectItem>
-                    {userData.customCategories.map((category) => (
-                      <SelectItem key={category} value={category}>
-                        {category}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Search wallet transactions"
+                  className="pl-10 pr-10"
+                />
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+                    aria-label="Clear wallet history search"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
               </div>
-            )}
+
+              <div className="flex items-center justify-between gap-3 px-1">
+                <p className="text-xs text-muted-foreground">Search by name, tag, date, or note.</p>
+                {(searchQuery.trim() || filterPeriod !== "all" || hasAdvancedFilters) && (
+                  <p className="shrink-0 text-[11px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
+                    {filteredTransactions.length} result{filteredTransactions.length === 1 ? "" : "s"}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <FilterChipGroup options={PERIOD_OPTIONS} value={filterPeriod} onChange={setFilterPeriod} />
+
+              <Collapsible open={showAdvancedFilters} onOpenChange={setShowAdvancedFilters}>
+                <div className="overflow-hidden rounded-2xl border border-border/60 bg-muted/22">
+                  <CollapsibleTrigger className="flex w-full items-center justify-between gap-3 px-3.5 py-3 text-left">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-2xl border border-border/60 bg-background/80">
+                        <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold tracking-[-0.02em]">Refine Results</p>
+                        <p className="text-xs text-muted-foreground">{activeFilterSummary}</p>
+                      </div>
+                    </div>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 text-muted-foreground transition-transform ${showAdvancedFilters ? "rotate-180" : ""}`}
+                    />
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent className="space-y-3 border-t border-border/60 px-3.5 pb-3.5 pt-3">
+                    <FilterChipGroup options={TYPE_OPTIONS} value={typeFilter} onChange={setTypeFilter} />
+
+                    {typeFilter === "expense" && (
+                      <div className="rounded-2xl border border-border/60 bg-background/88 p-3">
+                        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+                          <SelectTrigger className="border-0 bg-transparent px-0 shadow-none">
+                            <SelectValue placeholder="All expense categories" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All expense categories</SelectItem>
+                            <SelectItem value="leisure">Leisure</SelectItem>
+                            <SelectItem value="bills">Bills</SelectItem>
+                            <SelectItem value="transportation">Transportation</SelectItem>
+                            <SelectItem value="food">Food</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                            {userData.customCategories.map((category) => (
+                              <SelectItem key={category} value={category}>
+                                {category}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            </div>
           </div>
 
           {exemptTransactionCount > 0 && (
-            <div className="rounded-xl border border-border bg-muted/30 p-3 text-sm text-muted-foreground">
+            <div className="px-1 text-xs text-muted-foreground">
               {exemptTransactionCount} exempted wallet transaction{exemptTransactionCount === 1 ? "" : "s"} left out of totals.
             </div>
           )}
@@ -643,56 +764,64 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
                   setFilterPeriod("all");
                   setTypeFilter("all");
                   setCategoryFilter("all");
+                  setSearchQuery("");
+                  setShowAdvancedFilters(false);
                 }}
               >
-                Clear Filters
+                Clear Search & Filters
               </Button>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2.5">
               {filteredTransactions.map((transaction) => {
                 const typeInfo = transaction.type === "expense" ? transactionTypeInfo.expense : transactionTypeInfo.add_money;
                 const Icon = typeInfo.icon;
                 const exempt = isDateExempt(transaction.date, userData.computationExemptions);
+                const title = getWalletTransactionTitle(transaction);
+                const transactionDate = new Date(transaction.date);
+                const metaItems = [
+                  typeInfo.label,
+                  transaction.type === "expense" && transaction.category ? formatDisplayLabel(transaction.category) : "",
+                  exempt ? "Exempted day" : "",
+                ].filter(Boolean);
 
                 return (
                   <div key={transaction.id} className="app-list-row">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex min-w-0 flex-1 items-start gap-3">
-                        <div className="app-list-icon">
-                          <Icon className="h-4 w-4 text-muted-foreground" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <div className="mb-1 flex flex-wrap items-center gap-2">
-                            <Badge className={typeInfo.badgeClass} variant="outline">
-                              {typeInfo.label}
-                            </Badge>
-                            {transaction.type === "expense" && transaction.category && (
-                              <Badge className={getCategoryColor(transaction.category)} variant="outline">
-                                {transaction.category}
-                              </Badge>
-                            )}
-                            {exempt && <Badge variant="secondary">Exempted Day</Badge>}
-                          </div>
-                          {transaction.description && <p className="app-list-title mb-1 truncate">{transaction.description}</p>}
-                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            <Calendar className="h-3 w-3" />
-                            <span>{new Date(transaction.date).toLocaleDateString()}</span>
-                            <span>•</span>
-                            <span>
-                              {new Date(transaction.date).toLocaleTimeString([], {
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </span>
-                          </div>
-                        </div>
+                    <div className="flex items-start gap-3">
+                      <div className="app-list-icon">
+                        <Icon className="h-4 w-4 text-muted-foreground" />
                       </div>
-                      <div className="text-right">
-                        <p className={`text-lg font-semibold tracking-[-0.02em] ${typeInfo.color}`}>
-                          {typeInfo.sign}
-                          {formatUserCurrency(transaction.amount, userData.currencySettings)}
-                        </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0 flex-1">
+                            <p className="app-list-title truncate">{title}</p>
+                            <div className="app-list-meta flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                              {metaItems.map((item, index) => (
+                                <span key={`${transaction.id}-${item}`} className="flex items-center gap-1.5">
+                                  {index > 0 && <span className="text-border">•</span>}
+                                  <span>{item}</span>
+                                </span>
+                              ))}
+                            </div>
+                            <div className="app-list-meta flex items-center gap-1.5">
+                              <Calendar className="h-3.5 w-3.5" />
+                              <span>{transactionDate.toLocaleDateString()}</span>
+                              <span>•</span>
+                              <span>
+                                {transactionDate.toLocaleTimeString([], {
+                                  hour: "2-digit",
+                                  minute: "2-digit",
+                                })}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className={`summary-amount text-base ${typeInfo.color}`}>
+                              {typeInfo.sign}
+                              {formatUserCurrency(transaction.amount, userData.currencySettings)}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

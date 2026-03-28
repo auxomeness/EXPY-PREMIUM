@@ -225,7 +225,7 @@ export function Dashboard({ username }: DashboardProps) {
           <div className="absolute -left-8 bottom-0 h-24 w-24 rounded-full bg-white/8 blur-2xl" />
           <div className="relative flex items-start justify-between gap-3">
             <div>
-              <p className="text-sm text-primary-foreground/72">Available now</p>
+              <p className="text-sm text-primary-foreground/72">Current Balance</p>
               <p className="mt-2 text-[2.45rem] font-semibold tracking-[-0.05em] text-primary-foreground">
                 {formatUserCurrency(userData.balance, userData.currencySettings)}
               </p>
