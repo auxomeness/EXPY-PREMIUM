@@ -329,7 +329,7 @@
   }
 
   .wallet-loader-shell-compact {
-    @apply gap-3;
+    @apply gap-0;
   }
 
   .wallet-loader-mark {
@@ -337,6 +337,10 @@
     width: 86px;
     height: 70px;
     filter: drop-shadow(0 18px 24px rgba(3, 2, 19, 0.12));
+  }
+
+  .wallet-loader-mark-compact {
+    transform: scale(0.92);
   }
 
   .wallet-loader-cards {

@@ -168,9 +168,7 @@ function AppLoadingShell() {
   return (
     <div className="mobile-shell mobile-canvas">
       <div className="flex min-h-screen items-center justify-center px-6">
-        <div className="app-empty-state w-full max-w-[320px] bg-card/82">
-          <WalletLoader compact />
-        </div>
+        <WalletLoader compact />
       </div>
     </div>
   );

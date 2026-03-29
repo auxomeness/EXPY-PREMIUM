@@ -1,17 +1,11 @@
 type WalletLoaderProps = {
-  title?: string;
-  subtitle?: string;
   compact?: boolean;
 };
 
-export function WalletLoader({
-  title = "Expy",
-  subtitle = "Loading...",
-  compact = false,
-}: WalletLoaderProps) {
+export function WalletLoader({ compact = false }: WalletLoaderProps) {
   return (
     <div className={`wallet-loader-shell ${compact ? "wallet-loader-shell-compact" : ""}`}>
-      <div className="wallet-loader-mark" aria-hidden="true">
+      <div className={`wallet-loader-mark ${compact ? "wallet-loader-mark-compact" : ""}`} aria-hidden="true">
         <div className="wallet-loader-cards">
           <div className="wallet-loader-card wallet-loader-card-back">
             <span className="wallet-loader-card-chip" />
@@ -29,12 +23,6 @@ export function WalletLoader({
           <div className="wallet-loader-wallet-pocket" />
           <div className="wallet-loader-wallet-button" />
         </div>
-      </div>
-      <div className="space-y-1 text-center">
-        <h2 className={`${compact ? "text-lg" : "text-xl"} font-semibold tracking-[-0.02em] text-foreground`}>
-          {title}
-        </h2>
-        <p className="text-sm text-muted-foreground">{subtitle}</p>
       </div>
     </div>
   );
