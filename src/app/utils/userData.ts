@@ -103,6 +103,10 @@ export function createDefaultUserData(username: string, password = ""): UserData
   return {
     username,
     password,
+    authProvider: "local",
+    email: "",
+    googleId: "",
+    avatarUrl: "",
     displayName: "",
     balance: 0,
     initialBalance: 0,
@@ -163,6 +167,10 @@ export function normalizeUserData(user: Partial<UserData> & { username: string }
   return {
     ...defaults,
     ...user,
+    authProvider: user.authProvider || "local",
+    email: user.email || "",
+    googleId: user.googleId || "",
+    avatarUrl: user.avatarUrl || "",
     expenses: Array.isArray(user.expenses) ? user.expenses : [],
     transactions: Array.isArray(user.transactions) ? user.transactions : [],
     customCategories: Array.isArray(user.customCategories) ? user.customCategories : [],
@@ -196,6 +204,42 @@ export function writeStoredUsers(users: Record<string, UserData>) {
 export function getUserData(username: string) {
   const users = getStoredUsers();
   return users[username] ?? null;
+}
+
+export function findUserEntryByGoogleId(users: Record<string, UserData>, googleId: string) {
+  return Object.entries(users).find(([, user]) => user.googleId === googleId) ?? null;
+}
+
+function sanitizeUsernameSeed(value: string) {
+  const nextValue = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .slice(0, 10);
+
+  return nextValue || "user";
+}
+
+export function createUniqueUsername(seed: string, users: Record<string, UserData>) {
+  const base = sanitizeUsernameSeed(seed);
+
+  if (!users[base]) {
+    return base;
+  }
+
+  let counter = 2;
+
+  while (counter < 1000) {
+    const suffix = String(counter);
+    const candidate = `${base.slice(0, Math.max(1, 10 - suffix.length))}${suffix}`;
+
+    if (!users[candidate]) {
+      return candidate;
+    }
+
+    counter += 1;
+  }
+
+  return `${base.slice(0, 6)}${Date.now().toString().slice(-4)}`;
 }
 
 export function emitUserDataChanged(username: string, userData?: UserData) {

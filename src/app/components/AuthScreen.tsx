@@ -1,21 +1,70 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent } from "./ui/card";
 import { Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { FloatingLabelInput } from "./FloatingLabelInput";
 import { ForgotPassword } from "./ForgotPassword";
+import { loadGoogleIdentityScript, startGoogleAuth, type GoogleAuthMode, type GoogleProfile } from "../utils/googleAuth";
 
 type AuthScreenProps = {
   onLogin: (username: string) => void;
   onSignup: (username: string, password: string) => void;
+  onGoogleAuth: (profile: GoogleProfile, mode: GoogleAuthMode) => void;
 };
 
-export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
+export function AuthScreen({ onLogin, onSignup, onGoogleAuth }: AuthScreenProps) {
   const [isSignup, setIsSignup] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [googleReady, setGoogleReady] = useState(false);
+  const [googleError, setGoogleError] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    void loadGoogleIdentityScript()
+      .then(() => {
+        if (!isMounted) return;
+
+        setGoogleReady(true);
+        setGoogleError(false);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+
+        setGoogleReady(false);
+        setGoogleError(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleGoogleButtonClick = async (mode: GoogleAuthMode) => {
+    if (!googleReady) {
+      toast.error("Google sign-in is still loading");
+      return;
+    }
+
+    setIsGoogleLoading(true);
+
+    try {
+      const profile = await startGoogleAuth();
+      onGoogleAuth(profile, mode);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to continue with Google right now";
+
+      if (message !== "popup_closed" && message !== "access_denied") {
+        toast.error(message);
+      }
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -182,6 +231,28 @@ export function AuthScreen({ onLogin, onSignup }: AuthScreenProps) {
                 {isSignup ? "Sign Up" : "Log In"}
               </Button>
             </form>
+
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 w-full justify-center gap-3 rounded-2xl border-[#030213]/14 bg-white text-[#030213] shadow-none hover:bg-white dark:border-white/18 dark:bg-white dark:text-[#030213] dark:hover:bg-white"
+              onClick={() => void handleGoogleButtonClick(isSignup ? "signup" : "login")}
+              disabled={!googleReady || isGoogleLoading || googleError}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" className="h-[18px] w-[18px] shrink-0 text-[#030213]">
+                <path
+                  fill="currentColor"
+                  d="M21.35 11.1H12v2.98h5.37c-.24 1.52-1.97 4.46-5.37 4.46-3.24 0-5.88-2.68-5.88-5.99s2.64-5.99 5.88-5.99c1.84 0 3.08.79 3.78 1.46l2.58-2.49C16.72 4 14.57 3 12 3 7.03 3 3 7.03 3 12s4.03 9 9 9c5.2 0 8.65-3.65 8.65-8.8 0-.59-.05-1.03-.15-1.5Z"
+                />
+              </svg>
+              <span>{isGoogleLoading ? "Opening Google..." : isSignup ? "Signup with Google" : "Log In with Google"}</span>
+            </Button>
+
+            {googleError && (
+              <p className="text-center text-xs text-muted-foreground">
+                Google sign-in is unavailable right now.
+              </p>
+            )}
 
             {!isSignup && (
               <div>

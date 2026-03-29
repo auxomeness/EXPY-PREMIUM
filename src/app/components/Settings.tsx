@@ -179,6 +179,7 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
       : activeWallets.find((wallet) => wallet.id === activeAccount.walletId)?.name || "Archived Wallet";
   const liveRate = userData.currencySettings.exchangeRates[preferredCurrency];
   const manualRateOverride = userData.currencySettings.manualExchangeRates[preferredCurrency];
+  const isGoogleAuth = userData.authProvider === "google";
 
   useEffect(() => {
     if (activeWallets.length === 0) {
@@ -983,10 +984,24 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
         <SettingsSection
           value="profile"
           title="Profile & Security"
-          subtitle="Display name, username, and password."
-          badge={<Badge variant="secondary">@{username}</Badge>}
+          subtitle={isGoogleAuth ? "Display name, username, and Google sign-in." : "Display name, username, and password."}
+          badge={<Badge variant="secondary">{isGoogleAuth ? "Google" : `@${username}`}</Badge>}
         >
           <div className="space-y-5">
+            {isGoogleAuth && (
+              <>
+                <div className="app-list-row flex items-center justify-between gap-4">
+                  <div>
+                    <p className="app-list-title">Connected with Google</p>
+                    <p className="app-list-meta">{userData.email || "Google account linked"}</p>
+                  </div>
+                  <Badge variant="secondary">OAuth</Badge>
+                </div>
+
+                <Separator />
+              </>
+            )}
+
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <UserCircle className="h-4 w-4" />
@@ -1040,41 +1055,47 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
 
             <Separator />
 
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Lock className="h-4 w-4" />
-                <Label>Change Password</Label>
+            {isGoogleAuth ? (
+              <div className="app-empty-state text-sm text-muted-foreground">
+                Password changes are managed through your Google account for this profile.
               </div>
-              <FloatingLabelInput
-                type="password"
-                label="Current password"
-                value={currentPassword}
-                onChange={(event) => setCurrentPassword(event.target.value)}
-              />
-              <FloatingLabelInput
-                type="password"
-                label="New password"
-                value={newPassword}
-                onChange={(event) => setNewPassword(event.target.value)}
-              />
-              <FloatingLabelInput
-                type="password"
-                label="Confirm new password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                Minimum 6 characters with a capital letter, number, and special character.
-              </p>
-              <Button
-                onClick={handlePasswordChange}
-                className="w-full"
-                variant="outline"
-                disabled={!currentPassword || !newPassword || !confirmPassword}
-              >
-                Update Password
-              </Button>
-            </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Lock className="h-4 w-4" />
+                  <Label>Change Password</Label>
+                </div>
+                <FloatingLabelInput
+                  type="password"
+                  label="Current password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                />
+                <FloatingLabelInput
+                  type="password"
+                  label="New password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                />
+                <FloatingLabelInput
+                  type="password"
+                  label="Confirm new password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Minimum 6 characters with a capital letter, number, and special character.
+                </p>
+                <Button
+                  onClick={handlePasswordChange}
+                  className="w-full"
+                  variant="outline"
+                  disabled={!currentPassword || !newPassword || !confirmPassword}
+                >
+                  Update Password
+                </Button>
+              </div>
+            )}
           </div>
         </SettingsSection>
 

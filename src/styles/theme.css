@@ -209,6 +209,7 @@
 @layer components {
   .mobile-shell {
     @apply relative mx-auto flex min-h-screen w-full max-w-[430px] flex-col overflow-hidden bg-background;
+    isolation: isolate;
   }
 
   .mobile-canvas {
@@ -240,11 +241,13 @@
   }
 
   .hero-card {
-    @apply overflow-hidden rounded-[28px] border border-primary/10 bg-gradient-to-br from-primary to-primary/86 text-primary-foreground shadow-[0_22px_54px_-34px_rgba(3,2,19,0.9)];
+    @apply overflow-hidden rounded-[28px] border border-primary/10 bg-gradient-to-br from-primary to-primary/86 text-primary-foreground shadow-[0_18px_38px_-30px_rgba(3,2,19,0.78)];
+    contain: layout paint style;
   }
 
   .muted-tile {
     @apply rounded-2xl border border-border/60 bg-muted/35 p-3;
+    contain: paint style;
   }
 
   .summary-amount {
@@ -267,7 +270,7 @@
   }
 
   .header-stat-card {
-    @apply inline-flex min-h-14 items-center gap-2.5 rounded-[20px] border border-border/70 bg-card/88 px-3 py-2 shadow-[0_14px_28px_-24px_rgba(15,23,42,0.32)];
+    @apply inline-flex min-h-14 items-center gap-2.5 rounded-[20px] border border-border/70 bg-card/88 px-3 py-2 shadow-[0_12px_22px_-22px_rgba(15,23,42,0.26)];
   }
 
   .header-stat-icon {
@@ -300,7 +303,8 @@
   }
 
   .app-list-row {
-    @apply rounded-[22px] border border-border/70 bg-card/85 px-4 py-3.5 shadow-[0_12px_28px_-24px_rgba(15,23,42,0.28)];
+    @apply rounded-[22px] border border-border/70 bg-card/85 px-4 py-3.5 shadow-[0_10px_22px_-22px_rgba(15,23,42,0.22)];
+    contain: layout paint style;
   }
 
   .app-list-icon {
@@ -317,6 +321,37 @@
 
   .app-empty-state {
     @apply rounded-[22px] border border-dashed border-border px-5 py-8 text-center;
+    contain: layout paint style;
+  }
+
+  [data-slot="card"] {
+    contain: layout paint style;
+  }
+
+  @supports (content-visibility: auto) {
+    [data-slot="card"],
+    .app-list-row,
+    .app-empty-state {
+      content-visibility: auto;
+      contain-intrinsic-size: 1px 220px;
+    }
+  }
+
+  .undo-notification-progress {
+    animation-name: undo-progress;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+    transform-origin: left center;
+  }
+}
+
+@keyframes undo-progress {
+  from {
+    transform: scaleX(1);
+  }
+
+  to {
+    transform: scaleX(0);
   }
 }
 

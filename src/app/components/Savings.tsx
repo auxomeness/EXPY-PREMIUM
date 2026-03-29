@@ -64,6 +64,7 @@ export function Savings({ username }: SavingsProps) {
       return new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime();
     });
   }, [userData.savings, userData.savingsWishlist]);
+  const supportsPasswordLock = userData.authProvider !== "google";
 
   const persistWithUndo = (updater: (currentUserData: UserData) => UserData, message: string) => {
     const previousUserData = userData;
@@ -128,6 +129,11 @@ export function Savings({ username }: SavingsProps) {
   };
 
   const handleToggleLock = () => {
+    if (!supportsPasswordLock) {
+      toast.message("Savings lock is only available for password-based accounts right now.");
+      return;
+    }
+
     if (userData.savingsLocked) {
       setShowUnlockSavings(true);
       return;
@@ -259,12 +265,18 @@ export function Savings({ username }: SavingsProps) {
             <div>
               <p className="app-list-title">{userData.savingsLocked ? "Savings are locked" : "Savings are unlocked"}</p>
               <p className="app-list-meta">
-                {userData.savingsLocked
+                {!supportsPasswordLock
+                  ? "Google accounts keep savings access simple for now."
+                  : userData.savingsLocked
                   ? "Withdrawals need your password."
                   : "Lock it when you want extra friction."}
               </p>
             </div>
-            <Button onClick={handleToggleLock} variant={userData.savingsLocked ? "destructive" : "outline"}>
+            <Button
+              onClick={handleToggleLock}
+              variant={userData.savingsLocked ? "destructive" : "outline"}
+              disabled={!supportsPasswordLock}
+            >
               {userData.savingsLocked ? (
                 <>
                   <Unlock className="mr-2 h-4 w-4" />

@@ -4,7 +4,7 @@ import { Input } from "./ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Label } from "./ui/label";
 import { Sun, Moon, Sparkles } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import type { SupportedCurrency } from "../App";
@@ -22,11 +22,19 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
   const [balance, setBalance] = useState("");
   const [currency, setCurrency] = useState<SupportedCurrency>("PHP");
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     // Check current theme
     const darkMode = localStorage.getItem("expy_dark_mode") === "true";
     setIsDarkMode(darkMode);
+
+    const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
+    const existingDisplayName = users[username]?.displayName;
+
+    if (existingDisplayName) {
+      setDisplayName(existingDisplayName);
+    }
   }, []);
 
   const handleDisplayNameSubmit = (e: React.FormEvent) => {
@@ -89,6 +97,7 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
   };
 
   const totalSteps = 4;
+  const onboardingProgress = Math.min(((step - 1) / (totalSteps - 1)) * 100, 100);
 
   return (
     <div className="mobile-shell mobile-canvas justify-center px-5 py-8">
@@ -99,14 +108,11 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
               <span>Getting Started</span>
               <span>Step {step} of {totalSteps - 1}</span>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              {[1, 2, 3].map((index) => (
-                <div key={index} className="h-1.5 rounded-full bg-muted">
-                  <div
-                    className={`h-full rounded-full transition-all ${step >= index ? "bg-primary" : "bg-transparent"}`}
-                  />
-                </div>
-              ))}
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-primary transition-[width] duration-300 ease-out"
+                style={{ width: `${onboardingProgress}%` }}
+              />
             </div>
           </div>
         )}
@@ -114,10 +120,10 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
           {step === 1 && (
             <motion.div
               key="step1"
-              initial={{ opacity: 0, y: 20 }}
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}
+              transition={{ duration: reduceMotion ? 0.18 : 0.24 }}
             >
               <Card>
                 <CardHeader>
@@ -149,10 +155,10 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
           {step === 2 && (
             <motion.div
               key="step2"
-              initial={{ opacity: 0, y: 20 }}
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}
+              transition={{ duration: reduceMotion ? 0.18 : 0.24 }}
             >
               <Card>
                 <CardHeader>
@@ -211,10 +217,10 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
           {step === 3 && (
             <motion.div
               key="step3"
-              initial={{ opacity: 0, y: 20 }}
+              initial={reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.3 }}
+              exit={reduceMotion ? { opacity: 0 } : { opacity: 0, y: -12 }}
+              transition={{ duration: reduceMotion ? 0.18 : 0.24 }}
             >
               <Card>
                 <CardHeader>
@@ -238,8 +244,9 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
                       </div>
                       {!isDarkMode && (
                         <motion.div
-                          initial={{ scale: 0 }}
+                          initial={reduceMotion ? false : { scale: 0.88, opacity: 0 }}
                           animate={{ scale: 1 }}
+                          transition={{ duration: reduceMotion ? 0.12 : 0.18 }}
                           className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary flex items-center justify-center"
                         >
                           <svg className="w-4 h-4 text-primary-foreground" fill="currentColor" viewBox="0 0 20 20">
@@ -264,8 +271,9 @@ export function OnboardingScreen({ username, onComplete }: OnboardingScreenProps
                       </div>
                       {isDarkMode && (
                         <motion.div
-                          initial={{ scale: 0 }}
+                          initial={reduceMotion ? false : { scale: 0.88, opacity: 0 }}
                           animate={{ scale: 1 }}
+                          transition={{ duration: reduceMotion ? 0.12 : 0.18 }}
                           className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary flex items-center justify-center"
                         >
                           <svg className="w-4 h-4 text-primary-foreground" fill="currentColor" viewBox="0 0 20 20">

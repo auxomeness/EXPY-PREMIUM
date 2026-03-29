@@ -1,10 +1,13 @@
 import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Home, History, PiggyBank, SettingsIcon, Wallet, type LucideIcon } from "lucide-react";
+import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
 import { migrateUserData } from "./utils/migration";
 import { scheduleNotificationCheck } from "./utils/notifications";
 import { createDemoAccount } from "./utils/createDemoAccount";
 import { refreshUserCurrencyRatesIfNeeded } from "./utils/currency";
+import { type GoogleProfile, type GoogleAuthMode } from "./utils/googleAuth";
+import { createDefaultUserData, createUniqueUsername, findUserEntryByGoogleId, getStoredUsers, writeStoredUsers } from "./utils/userData";
 
 export type SupportedCurrency =
   | "PHP"
@@ -29,6 +32,8 @@ export type SupportedCurrency =
   | "NOK"
   | "MYR"
   | "AED";
+
+export type AuthProvider = "local" | "google";
 
 export type Expense = {
   id: string;
@@ -100,6 +105,10 @@ export type ActiveAccount =
 export type UserData = {
   username: string;
   password?: string;
+  authProvider: AuthProvider;
+  email?: string;
+  googleId?: string;
+  avatarUrl?: string;
   displayName?: string;
   balance: number;
   initialBalance: number;
@@ -180,6 +189,9 @@ export default function App() {
     
     // Create demo account on first load
     createDemoAccount();
+
+    const darkModeEnabled = localStorage.getItem("expy_dark_mode") === "true";
+    document.documentElement.classList.toggle("dark", darkModeEnabled);
     
     const user = localStorage.getItem("expy_current_user");
     if (user) {
@@ -265,6 +277,52 @@ export default function App() {
     setSecurityQuestionsUser({ username, password });
   };
 
+  const handleGoogleAuth = (profile: GoogleProfile, mode: GoogleAuthMode) => {
+    if (!profile.emailVerified) {
+      toast.error("Google account email could not be verified.");
+      return;
+    }
+
+    const users = getStoredUsers();
+    const existingGoogleEntry = findUserEntryByGoogleId(users, profile.id);
+
+    if (existingGoogleEntry) {
+      const [existingUsername, existingUser] = existingGoogleEntry;
+
+      if (existingUser.isActive === false) {
+        users[existingUsername] = {
+          ...existingUser,
+          isActive: true,
+        };
+        writeStoredUsers(users);
+      }
+
+      handleLogin(existingUsername);
+      return;
+    }
+
+    if (mode === "login") {
+      toast.error("No EXPY account is linked to this Google account yet. Use Sign Up to create one.");
+      return;
+    }
+
+    const usernameSeed = profile.email.split("@")[0] || profile.name || "googleuser";
+    const nextUsername = createUniqueUsername(usernameSeed, users);
+
+    users[nextUsername] = {
+      ...createDefaultUserData(nextUsername),
+      authProvider: "google",
+      email: profile.email,
+      googleId: profile.id,
+      avatarUrl: profile.picture || "",
+      displayName: profile.name,
+    };
+    writeStoredUsers(users);
+
+    setOnboardingUser(nextUsername);
+    toast.success("Google account connected");
+  };
+
   const handleSecurityQuestionsComplete = () => {
     if (securityQuestionsUser) {
       setOnboardingUser(securityQuestionsUser.username);
@@ -315,7 +373,7 @@ export default function App() {
   } else if (onboardingUser) {
     screen = <OnboardingScreen username={onboardingUser} onComplete={handleOnboardingComplete} />;
   } else if (!currentUser) {
-    screen = <AuthScreen onLogin={handleLogin} onSignup={handleSignup} />;
+    screen = <AuthScreen onLogin={handleLogin} onSignup={handleSignup} onGoogleAuth={handleGoogleAuth} />;
   } else {
     screen = (
       <div className="mobile-shell mobile-canvas">
@@ -345,7 +403,7 @@ export default function App() {
         </div>
 
         <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 mx-auto flex w-full max-w-[430px] justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
-          <nav className="pointer-events-auto w-full rounded-[28px] border border-border/70 bg-card/95 px-2 py-2 shadow-[0_24px_48px_-28px_rgba(15,23,42,0.42)] backdrop-blur-[8px] dark:bg-card/92">
+          <nav className="pointer-events-auto w-full rounded-[28px] border border-border/70 bg-card/96 px-2 py-2 shadow-[0_18px_34px_-24px_rgba(15,23,42,0.28)] dark:bg-card/94">
             <div className="grid grid-cols-5 gap-1">
               {APP_TABS.map((tab) => {
                 const Icon = tab.icon;

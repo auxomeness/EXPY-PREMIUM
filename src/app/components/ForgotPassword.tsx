@@ -33,6 +33,11 @@ export function ForgotPassword({ onBack, onSuccess }: ForgotPasswordProps) {
       return;
     }
 
+    if (user.authProvider === "google") {
+      toast.error("This account uses Google sign-in. Use the Google button to continue.");
+      return;
+    }
+
     if (!user.securityQuestions) {
       toast.error("This account doesn't have security questions set up");
       return;

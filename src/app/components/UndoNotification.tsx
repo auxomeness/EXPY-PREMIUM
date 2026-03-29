@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { motion } from "motion/react";
+import { useEffect } from "react";
+import { motion, useReducedMotion } from "motion/react";
 import { Button } from "./ui/button";
 import { Undo2 } from "lucide-react";
 
@@ -16,29 +16,22 @@ export function UndoNotification({
   onComplete, 
   duration = 3000 
 }: UndoNotificationProps) {
-  const [progress, setProgress] = useState(100);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setProgress((prev) => {
-        const newProgress = prev - (100 / (duration / 50));
-        if (newProgress <= 0) {
-          clearInterval(interval);
-          onComplete();
-          return 0;
-        }
-        return newProgress;
-      });
-    }, 50);
+    const timer = window.setTimeout(() => {
+      onComplete();
+    }, duration);
 
-    return () => clearInterval(interval);
+    return () => window.clearTimeout(timer);
   }, [duration, onComplete]);
 
   return (
     <motion.div
-      initial={{ y: 100, opacity: 0 }}
+      initial={reduceMotion ? { opacity: 0 } : { y: 72, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
-      exit={{ y: 100, opacity: 0 }}
+      exit={reduceMotion ? { opacity: 0 } : { y: 72, opacity: 0 }}
+      transition={{ duration: reduceMotion ? 0.12 : 0.2 }}
       className="fixed bottom-20 left-4 right-4 z-50 mx-auto max-w-md"
     >
       <div className="bg-background border rounded-lg shadow-lg overflow-hidden">
@@ -55,10 +48,9 @@ export function UndoNotification({
           </Button>
         </div>
         <div className="h-1 bg-muted">
-          <motion.div
-            className="h-full bg-primary"
-            style={{ width: `${progress}%` }}
-            transition={{ duration: 0.05, ease: "linear" }}
+          <div
+            className="undo-notification-progress h-full bg-primary"
+            style={{ animationDuration: `${duration}ms` }}
           />
         </div>
       </div>
