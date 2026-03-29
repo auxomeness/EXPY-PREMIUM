@@ -62,7 +62,6 @@ export function WithdrawSavingsDialog({
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              autoFocus
             />
             <p className="text-xs text-muted-foreground">
               Current savings: {formatUserCurrency(currentSavings, currencySettings)}

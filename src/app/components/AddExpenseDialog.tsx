@@ -85,7 +85,6 @@ export function AddExpenseDialog({
               placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
-              autoFocus
             />
           </div>
           
