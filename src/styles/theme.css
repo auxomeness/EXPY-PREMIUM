@@ -324,6 +324,130 @@
     contain: layout paint style;
   }
 
+  .wallet-loader-shell {
+    @apply flex flex-col items-center justify-center gap-4;
+  }
+
+  .wallet-loader-shell-compact {
+    @apply gap-3;
+  }
+
+  .wallet-loader-mark {
+    position: relative;
+    width: 86px;
+    height: 70px;
+    filter: drop-shadow(0 18px 24px rgba(3, 2, 19, 0.12));
+  }
+
+  .wallet-loader-cards {
+    position: absolute;
+    inset: 0 0 16px 0;
+  }
+
+  .wallet-loader-card {
+    --card-shift: 0px;
+    --card-rise: -18px;
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 42px;
+    height: 28px;
+    margin-left: -21px;
+    border-radius: 10px;
+    border: 1.5px solid color-mix(in srgb, var(--primary) 14%, transparent);
+    background: linear-gradient(180deg, #ffffff, color-mix(in srgb, #ffffff 88%, var(--muted) 12%));
+    box-shadow: 0 10px 18px -16px rgba(3, 2, 19, 0.35);
+    transform: translate3d(var(--card-shift), 0, 0);
+    animation: wallet-card-cycle 1.55s cubic-bezier(0.65, 0.08, 0.24, 0.98) infinite;
+    will-change: transform;
+  }
+
+  .wallet-loader-card-back {
+    --card-shift: -12px;
+    --card-rise: -11px;
+    animation-delay: -0.34s;
+    opacity: 0.72;
+  }
+
+  .wallet-loader-card-mid {
+    --card-shift: 0px;
+    --card-rise: -18px;
+    animation-delay: -0.17s;
+    opacity: 0.86;
+  }
+
+  .wallet-loader-card-front {
+    --card-shift: 12px;
+    --card-rise: -25px;
+    opacity: 1;
+  }
+
+  .wallet-loader-card-chip {
+    position: absolute;
+    top: 7px;
+    left: 8px;
+    width: 11px;
+    height: 8px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--primary) 80%, white 20%);
+    opacity: 0.9;
+  }
+
+  .wallet-loader-wallet {
+    position: absolute;
+    inset: auto 0 0 0;
+    height: 46px;
+  }
+
+  .wallet-loader-wallet-back,
+  .wallet-loader-wallet-front,
+  .wallet-loader-wallet-pocket {
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+  }
+
+  .wallet-loader-wallet-back {
+    top: 4px;
+    left: 4px;
+    right: 4px;
+    height: 38px;
+    border: 1.5px solid color-mix(in srgb, var(--primary) 12%, transparent);
+    background: linear-gradient(145deg, color-mix(in srgb, var(--primary) 88%, white 12%), color-mix(in srgb, var(--primary) 76%, white 24%));
+  }
+
+  .wallet-loader-wallet-front {
+    top: 8px;
+    height: 38px;
+    border: 2px solid color-mix(in srgb, var(--primary) 16%, transparent);
+    background:
+      linear-gradient(145deg, color-mix(in srgb, var(--primary) 97%, white 3%), color-mix(in srgb, var(--primary) 85%, white 15%));
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 10px 18px -12px rgba(3, 2, 19, 0.34);
+  }
+
+  .wallet-loader-wallet-pocket {
+    top: 15px;
+    left: 15px;
+    right: 10px;
+    height: 21px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.03));
+  }
+
+  .wallet-loader-wallet-button {
+    position: absolute;
+    top: 23px;
+    right: 16px;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.88);
+    animation: wallet-button-glint 1.55s ease-in-out infinite;
+  }
+
   [data-slot="card"] {
     contain: layout paint style;
   }
@@ -355,6 +479,38 @@
   }
 }
 
+@keyframes wallet-card-cycle {
+  0%,
+  14%,
+  100% {
+    transform: translate3d(var(--card-shift), 0, 0);
+  }
+
+  34%,
+  56% {
+    transform: translate3d(var(--card-shift), var(--card-rise), 0);
+  }
+
+  74% {
+    transform: translate3d(var(--card-shift), 0, 0);
+  }
+}
+
+@keyframes wallet-button-glint {
+  0%,
+  20%,
+  100% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+
+  48%,
+  60% {
+    opacity: 0.34;
+    transform: scale(0.84);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -363,5 +519,10 @@
     animation-iteration-count: 1 !important;
     scroll-behavior: auto !important;
     transition-duration: 0.01ms !important;
+  }
+
+  .wallet-loader-card,
+  .wallet-loader-wallet-button {
+    animation: none !important;
   }
 }

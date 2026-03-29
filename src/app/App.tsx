@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useState, type ReactNode } from "react";
 import { Home, History, PiggyBank, SettingsIcon, Wallet, type LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
+import { WalletLoader } from "./components/WalletLoader";
 import { migrateUserData } from "./utils/migration";
 import { scheduleNotificationCheck } from "./utils/notifications";
 import { createDemoAccount } from "./utils/createDemoAccount";
@@ -168,7 +169,7 @@ function AppLoadingShell() {
     <div className="mobile-shell mobile-canvas">
       <div className="flex min-h-screen items-center justify-center px-6">
         <div className="app-empty-state w-full max-w-[320px] bg-card/82">
-          <p className="text-sm font-medium text-foreground">Loading...</p>
+          <WalletLoader compact />
         </div>
       </div>
     </div>
