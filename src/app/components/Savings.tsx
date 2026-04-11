@@ -14,7 +14,7 @@ import {
 import { toast } from "sonner";
 import type { Transaction, UserData, WishlistItem } from "../App";
 import { convertToBaseCurrency, formatUserCurrency } from "../utils/currency";
-import { createDefaultUserData, getUserData, saveUserData, subscribeToUserData, updateUserData } from "../utils/userData";
+import { createDefaultUserData, generateEntityId, getUserData, saveUserData, subscribeToUserData, updateUserData } from "../utils/userData";
 import { AddSavingsDialog } from "./AddSavingsDialog";
 import { UnlockSavingsDialog } from "./UnlockSavingsDialog";
 import { UndoNotification } from "./UndoNotification";
@@ -84,7 +84,7 @@ export function Savings({ username }: SavingsProps) {
   const handleAddSavings = (amount: number) => {
     const amountInBaseCurrency = convertToBaseCurrency(amount, userData.currencySettings);
     const transaction: Transaction = {
-      id: Date.now().toString(),
+      id: generateEntityId("savings"),
       type: "add_savings",
       amount: amountInBaseCurrency,
       date: new Date().toISOString(),
@@ -104,7 +104,7 @@ export function Savings({ username }: SavingsProps) {
   const handleWithdrawSavings = (amount: number) => {
     const amountInBaseCurrency = convertToBaseCurrency(amount, userData.currencySettings);
     const transaction: Transaction = {
-      id: Date.now().toString(),
+      id: generateEntityId("savings"),
       type: "withdraw_savings",
       amount: amountInBaseCurrency,
       date: new Date().toISOString(),

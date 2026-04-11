@@ -14,6 +14,10 @@ type AddMoneyDialogProps = {
   onAddMoney: (amount: number, period: BudgetPeriod) => void;
   currencyCode: SupportedCurrency;
   accountLabel?: string;
+  title?: string;
+  description?: string;
+  submitLabel?: string;
+  showBudgetPeriod?: boolean;
 };
 
 export function AddMoneyDialog({
@@ -22,6 +26,10 @@ export function AddMoneyDialog({
   onAddMoney,
   currencyCode,
   accountLabel = "balance",
+  title = "Add Money",
+  description,
+  submitLabel = "Add Money",
+  showBudgetPeriod = true,
 }: AddMoneyDialogProps) {
   const [amount, setAmount] = useState("");
   const [period, setPeriod] = useState<BudgetPeriod>("monthly");
@@ -39,15 +47,15 @@ export function AddMoneyDialog({
     onAddMoney(amountNum, period);
     setAmount("");
     setPeriod("monthly");
-    toast.success(`${formatCurrency(amountNum, currencyCode)} added to ${accountLabel}`);
+    toast.success(`${formatCurrency(amountNum, currencyCode)} added`);
   };
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Add Money</DrawerTitle>
-          <DrawerDescription>Add funds to this balance.</DrawerDescription>
+          <DrawerTitle>{title}</DrawerTitle>
+          <DrawerDescription>{description ?? `Add funds to ${accountLabel}.`}</DrawerDescription>
         </DrawerHeader>
         <form onSubmit={handleSubmit} className="space-y-4 px-5 pb-2">
           <div className="space-y-2">
@@ -62,24 +70,26 @@ export function AddMoneyDialog({
             />
           </div>
           
-          <div className="space-y-2">
-            <Label htmlFor="period">Budget Period</Label>
-            <Select value={period} onValueChange={(value) => setPeriod(value as BudgetPeriod)}>
-              <SelectTrigger id="period">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="daily">Daily Budget</SelectItem>
-                <SelectItem value="weekly">Weekly Budget</SelectItem>
-                <SelectItem value="monthly">Monthly Budget</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-xs text-muted-foreground">
-              {period === "daily" && "This amount is for one day"}
-              {period === "weekly" && "This amount is for one week (7 days)"}
-              {period === "monthly" && "This amount is for one month (30 days)"}
-            </p>
-          </div>
+          {showBudgetPeriod ? (
+            <div className="space-y-2">
+              <Label htmlFor="period">Budget Period</Label>
+              <Select value={period} onValueChange={(value) => setPeriod(value as BudgetPeriod)}>
+                <SelectTrigger id="period">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="daily">Daily Budget</SelectItem>
+                  <SelectItem value="weekly">Weekly Budget</SelectItem>
+                  <SelectItem value="monthly">Monthly Budget</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {period === "daily" && "This amount is for one day"}
+                {period === "weekly" && "This amount is for one week (7 days)"}
+                {period === "monthly" && "This amount is for one month (30 days)"}
+              </p>
+            </div>
+          ) : null}
 
           <DrawerFooter className="px-0 pt-3">
             <div className="flex gap-2">
@@ -87,7 +97,7 @@ export function AddMoneyDialog({
               Cancel
             </Button>
             <Button type="submit" className="flex-1">
-              Add Money to {accountLabel}
+              {submitLabel}
             </Button>
             </div>
           </DrawerFooter>

@@ -1,13 +1,18 @@
 import type {
+  Account,
   ActiveAccount,
   ComputationExemption,
   CurrencySettings,
   CustomWallet,
+  SubscriptionItem,
   UserData,
   WishlistItem,
 } from "../App";
+import { DEFAULT_QUICK_ACTION_IDS, sanitizeQuickActionIds } from "./quickActions";
+import { normalizeAccentHex } from "./theme";
 
 const USER_DATA_EVENT = "expy:user-data-updated";
+const USERS_STORAGE_KEY = "expy_users";
 
 export function generateEntityId(prefix: string) {
   const randomId =
@@ -32,6 +37,33 @@ export function createDefaultCurrencySettings(baseCurrency: CurrencySettings["ba
   };
 }
 
+export function createEmptyAccount(name = "Expy"): Account {
+  const now = new Date().toISOString();
+
+  return {
+    id: generateEntityId("account"),
+    name,
+    accountType: "cash",
+    theme: "default",
+    customColorMode: "color",
+    customGradientStart: "#1d4ed8",
+    customGradientEnd: "#7c3aed",
+    customColorHue: 220,
+    balanceModel: "standard",
+    balance: 0,
+    initialBalance: 0,
+    includeInTotal: true,
+    showOnHome: true,
+    archived: false,
+    creditLimit: 0,
+    usedCredit: 0,
+    expenses: [],
+    transactions: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
 export function createEmptyWallet(name = "New Wallet"): CustomWallet {
   const now = new Date().toISOString();
 
@@ -47,9 +79,50 @@ export function createEmptyWallet(name = "New Wallet"): CustomWallet {
     budgetPeriod: "monthly",
     budgetAmount: 0,
     lastBudgetReset: now,
+    includeInTotal: false,
+    showOnHome: false,
     archived: false,
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+function createEmptySubscription(): SubscriptionItem {
+  const now = new Date().toISOString();
+
+  return {
+    id: generateEntityId("subscription"),
+    name: "New Subscription",
+    amount: 0,
+    billingCycle: "monthly",
+    nextDueDate: now,
+    linkedPaymentSourceId: "",
+    category: "General",
+    status: "active",
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function normalizeAccount(account: Partial<Account>): Account {
+  const defaults = createEmptyAccount(account.name || "Expy");
+
+  return {
+    ...defaults,
+    ...account,
+    customColorMode: account.customColorMode === "black" || account.customColorMode === "white" ? account.customColorMode : defaults.customColorMode,
+    customGradientStart: typeof account.customGradientStart === "string" ? account.customGradientStart : defaults.customGradientStart,
+    customGradientEnd: typeof account.customGradientEnd === "string" ? account.customGradientEnd : defaults.customGradientEnd,
+    customColorHue: typeof account.customColorHue === "number" ? account.customColorHue : defaults.customColorHue,
+    expenses: Array.isArray(account.expenses) ? account.expenses : [],
+    transactions: Array.isArray(account.transactions) ? account.transactions : [],
+    includeInTotal: account.includeInTotal ?? defaults.includeInTotal,
+    showOnHome: account.showOnHome ?? defaults.showOnHome,
+    archived: account.archived ?? false,
+    creditLimit: account.creditLimit ?? defaults.creditLimit,
+    usedCredit: account.usedCredit ?? defaults.usedCredit,
+    createdAt: account.createdAt || defaults.createdAt,
+    updatedAt: account.updatedAt || account.createdAt || defaults.updatedAt,
   };
 }
 
@@ -66,10 +139,28 @@ function normalizeWallet(wallet: Partial<CustomWallet>): CustomWallet {
     budgetPeriod: wallet.budgetPeriod ?? defaults.budgetPeriod,
     budgetAmount: wallet.budgetAmount ?? defaults.budgetAmount,
     lastBudgetReset: wallet.lastBudgetReset || defaults.lastBudgetReset,
+    includeInTotal: wallet.includeInTotal ?? defaults.includeInTotal,
+    showOnHome: wallet.showOnHome ?? defaults.showOnHome,
     archived: wallet.archived ?? false,
     createdAt: wallet.createdAt || defaults.createdAt,
     updatedAt: wallet.updatedAt || wallet.createdAt || defaults.updatedAt,
   };
+}
+
+function sanitizeStringArray(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [] as string[];
+  }
+
+  return Array.from(new Set(value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)));
+}
+
+function sanitizeAccentPreference(value: unknown) {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return normalizeAccentHex(value) ?? "";
 }
 
 function normalizeExemption(exemption: Partial<ComputationExemption>): ComputationExemption {
@@ -97,44 +188,14 @@ function normalizeWishlistItem(item: Partial<WishlistItem>): WishlistItem {
   };
 }
 
-export function createDefaultUserData(username: string, password = ""): UserData {
-  const now = new Date().toISOString();
+function normalizeSubscriptionItem(item: Partial<SubscriptionItem>): SubscriptionItem {
+  const defaults = createEmptySubscription();
 
   return {
-    username,
-    password,
-    authProvider: "local",
-    email: "",
-    googleId: "",
-    avatarUrl: "",
-    displayName: "",
-    balance: 0,
-    initialBalance: 0,
-    expenses: [],
-    transactions: [],
-    thresholdPercentage: 20,
-    customCategories: [],
-    budgetPeriod: "monthly",
-    budgetAmount: 0,
-    lastBudgetReset: now,
-    isActive: true,
-    currentStreak: 0,
-    lastOpenedDate: now,
-    savings: 0,
-    savingsLocked: false,
-    notificationsEnabled: false,
-    dayEndTime: "22:00",
-    lastNotificationDate: "",
-    securityQuestions: {
-      nickname: "",
-      birthdate: "",
-      favoriteColor: "",
-      secretCode: "",
-    },
-    currencySettings: createDefaultCurrencySettings(),
-    computationExemptions: [],
-    wallets: [],
-    savingsWishlist: [],
+    ...defaults,
+    ...item,
+    createdAt: item.createdAt || defaults.createdAt,
+    updatedAt: item.updatedAt || item.createdAt || defaults.updatedAt,
   };
 }
 
@@ -161,18 +222,152 @@ function normalizeCurrencySettings(settings?: Partial<CurrencySettings>): Curren
   };
 }
 
-export function normalizeUserData(user: Partial<UserData> & { username: string }): UserData {
-  const defaults = createDefaultUserData(user.username, user.password || "");
+function sanitizeOrderedIds(ids: unknown, validIds: string[]) {
+  const nextIds = Array.isArray(ids) ? ids.filter((id): id is string => typeof id === "string" && validIds.includes(id)) : [];
+  const missingIds = validIds.filter((id) => !nextIds.includes(id));
+  return [...nextIds, ...missingIds];
+}
+
+function createPrimaryAccountFromLegacy(user: Partial<UserData> & { username: string }, accounts: Account[]) {
+  const now = new Date().toISOString();
+  const fallbackAccount = accounts[0];
+  const primary = normalizeAccount({
+    ...fallbackAccount,
+    id: fallbackAccount?.id || generateEntityId("account"),
+    name: fallbackAccount?.name || "Expy",
+    accountType: fallbackAccount?.accountType || "cash",
+    theme: fallbackAccount?.theme || "default",
+    customColorHue: fallbackAccount?.customColorHue,
+    balanceModel: fallbackAccount?.balanceModel || "standard",
+    balance: user.balance ?? fallbackAccount?.balance ?? 0,
+    initialBalance: user.initialBalance ?? fallbackAccount?.initialBalance ?? 0,
+    expenses: Array.isArray(user.expenses) ? user.expenses : fallbackAccount?.expenses ?? [],
+    transactions: Array.isArray(user.transactions) ? user.transactions : fallbackAccount?.transactions ?? [],
+    includeInTotal: fallbackAccount?.includeInTotal ?? true,
+    showOnHome: fallbackAccount?.showOnHome ?? true,
+    archived: false,
+    creditLimit: fallbackAccount?.creditLimit ?? 0,
+    usedCredit: fallbackAccount?.usedCredit ?? 0,
+    createdAt: fallbackAccount?.createdAt || now,
+    updatedAt: now,
+  });
+
+  return primary;
+}
+
+function syncLegacyFromPrimaryAccount(userData: UserData, primaryAccount: Account): UserData {
+  const visibleHomeAccounts = userData.accounts.filter((account) => !account.archived && account.showOnHome);
+  const configuredHeroAccountIds = userData.preferences.homeHeroVisibleAccountIds.filter((accountId) =>
+    visibleHomeAccounts.some((account) => account.id === accountId),
+  );
+  const ensuredHeroAccountIds =
+    primaryAccount.showOnHome && !primaryAccount.archived
+      ? Array.from(new Set([primaryAccount.id, ...configuredHeroAccountIds]))
+      : configuredHeroAccountIds;
+  const fallbackHeroAccountId =
+    ensuredHeroAccountIds[0] ||
+    visibleHomeAccounts[0]?.id ||
+    primaryAccount.id;
 
   return {
+    ...userData,
+    balance: primaryAccount.balance,
+    initialBalance: primaryAccount.initialBalance,
+    expenses: primaryAccount.expenses,
+    transactions: primaryAccount.transactions,
+    preferences: {
+      ...userData.preferences,
+      homeSelectedAccountId:
+        ensuredHeroAccountIds.includes(userData.preferences.homeSelectedAccountId)
+          ? userData.preferences.homeSelectedAccountId
+          : fallbackHeroAccountId,
+      homeHeroSwipeEnabled: userData.preferences.homeHeroSwipeEnabled,
+      homeHeroVisibleAccountIds: ensuredHeroAccountIds,
+    },
+  };
+}
+
+export function createDefaultUserData(username: string, password = ""): UserData {
+  const now = new Date().toISOString();
+  const primaryAccount = createEmptyAccount("Expy");
+
+  return {
+    username,
+    password,
+    authProvider: "local",
+    email: "",
+    googleId: "",
+    avatarUrl: "",
+    displayName: "",
+    plan: "free",
+    balance: 0,
+    initialBalance: 0,
+    expenses: [],
+    transactions: [],
+    accounts: [primaryAccount],
+    thresholdPercentage: 20,
+    customCategories: [],
+    budgetPeriod: "monthly",
+    budgetAmount: 0,
+    lastBudgetReset: now,
+    isActive: true,
+    currentStreak: 0,
+    lastOpenedDate: now,
+    savings: 0,
+    savingsLocked: false,
+    notificationsEnabled: false,
+    dayEndTime: "22:00",
+    lastNotificationDate: "",
+    securityQuestions: {
+      nickname: "",
+      birthdate: "",
+      favoriteColor: "",
+      secretCode: "",
+    },
+    currencySettings: createDefaultCurrencySettings(),
+    computationExemptions: [],
+    wallets: [],
+    subscriptions: [],
+    preferences: {
+      homeHeroMode: "total_balance",
+      homeSelectedAccountId: primaryAccount.id,
+      homeHeroSwipeEnabled: true,
+      homeHeroVisibleAccountIds: [primaryAccount.id],
+      quickActionIds: DEFAULT_QUICK_ACTION_IDS,
+      accountListOrderIds: [primaryAccount.id],
+      subscriptionListOrderIds: [],
+      dismissedDashboardWarningIds: [],
+      themeAccentHex: "",
+    },
+    savingsWishlist: [],
+  };
+}
+
+export function normalizeUserData(user: Partial<UserData> & { username: string }): UserData {
+  const defaults = createDefaultUserData(user.username, user.password || "");
+  const normalizedAccounts =
+    Array.isArray(user.accounts) && user.accounts.length > 0 ? user.accounts.map(normalizeAccount) : [];
+  const primaryAccount = createPrimaryAccountFromLegacy({ ...defaults, ...user }, normalizedAccounts);
+  const remainingAccounts = normalizedAccounts
+    .filter((account) => account.id !== primaryAccount.id)
+    .map((account) =>
+      normalizeAccount({
+        ...account,
+        updatedAt: account.updatedAt || account.createdAt || primaryAccount.updatedAt,
+      }),
+    );
+
+  const normalizedUser: UserData = {
     ...defaults,
     ...user,
     authProvider: user.authProvider || "local",
     email: user.email || "",
     googleId: user.googleId || "",
     avatarUrl: user.avatarUrl || "",
+    plan: user.plan || "free",
     expenses: Array.isArray(user.expenses) ? user.expenses : [],
     transactions: Array.isArray(user.transactions) ? user.transactions : [],
+    accounts: [primaryAccount, ...remainingAccounts],
     customCategories: Array.isArray(user.customCategories) ? user.customCategories : [],
     securityQuestions: {
       ...defaults.securityQuestions,
@@ -183,14 +378,35 @@ export function normalizeUserData(user: Partial<UserData> & { username: string }
       ? user.computationExemptions.map(normalizeExemption)
       : [],
     wallets: Array.isArray(user.wallets) ? user.wallets.map(normalizeWallet) : [],
+    subscriptions: Array.isArray(user.subscriptions)
+      ? user.subscriptions.map(normalizeSubscriptionItem)
+      : [],
+    preferences: {
+      ...defaults.preferences,
+      ...(user.preferences || {}),
+      homeSelectedAccountId: user.preferences?.homeSelectedAccountId || primaryAccount.id,
+      homeHeroSwipeEnabled: user.preferences?.homeHeroSwipeEnabled ?? defaults.preferences.homeHeroSwipeEnabled,
+      homeHeroVisibleAccountIds: Array.isArray(user.preferences?.homeHeroVisibleAccountIds)
+        ? user.preferences.homeHeroVisibleAccountIds
+        : [primaryAccount, ...remainingAccounts]
+            .filter((account) => account.showOnHome && !account.archived)
+            .map((account) => account.id),
+      quickActionIds: sanitizeQuickActionIds(user.preferences?.quickActionIds),
+      accountListOrderIds: sanitizeOrderedIds(user.preferences?.accountListOrderIds, [primaryAccount, ...remainingAccounts].map((account) => account.id)),
+      subscriptionListOrderIds: sanitizeOrderedIds(user.preferences?.subscriptionListOrderIds, Array.isArray(user.subscriptions) ? user.subscriptions.map((subscription) => normalizeSubscriptionItem(subscription).id) : []),
+      dismissedDashboardWarningIds: sanitizeStringArray(user.preferences?.dismissedDashboardWarningIds),
+      themeAccentHex: sanitizeAccentPreference(user.preferences?.themeAccentHex),
+    },
     savingsWishlist: Array.isArray(user.savingsWishlist)
       ? user.savingsWishlist.map(normalizeWishlistItem)
       : [],
   };
+
+  return syncLegacyFromPrimaryAccount(normalizedUser, primaryAccount);
 }
 
 export function getStoredUsers(): Record<string, UserData> {
-  const rawUsers = JSON.parse(localStorage.getItem("expy_users") || "{}") as Record<string, Partial<UserData>>;
+  const rawUsers = JSON.parse(localStorage.getItem(USERS_STORAGE_KEY) || "{}") as Record<string, Partial<UserData>>;
 
   return Object.fromEntries(
     Object.entries(rawUsers).map(([username, user]) => [username, normalizeUserData({ username, ...user })]),
@@ -198,7 +414,7 @@ export function getStoredUsers(): Record<string, UserData> {
 }
 
 export function writeStoredUsers(users: Record<string, UserData>) {
-  localStorage.setItem("expy_users", JSON.stringify(users));
+  localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
 }
 
 export function getUserData(username: string) {
@@ -262,9 +478,22 @@ export function subscribeToUserData(username: string, onChange: (userData: UserD
     onChange(customEvent.detail.userData ?? getUserData(username)!);
   };
 
-  window.addEventListener(USER_DATA_EVENT, handleChange);
+  const handleStorage = (event: StorageEvent) => {
+    if (event.key !== USERS_STORAGE_KEY) return;
 
-  return () => window.removeEventListener(USER_DATA_EVENT, handleChange);
+    const nextUserData = getUserData(username);
+    if (nextUserData) {
+      onChange(nextUserData);
+    }
+  };
+
+  window.addEventListener(USER_DATA_EVENT, handleChange);
+  window.addEventListener("storage", handleStorage);
+
+  return () => {
+    window.removeEventListener(USER_DATA_EVENT, handleChange);
+    window.removeEventListener("storage", handleStorage);
+  };
 }
 
 export function saveUserData(username: string, nextUserData: UserData) {
@@ -285,6 +514,61 @@ export function updateUserData(username: string, updater: (currentUserData: User
   return saveUserData(username, updater(currentUserData));
 }
 
+export function getPrimaryAccount(userData: UserData) {
+  return userData.accounts[0] ?? createPrimaryAccountFromLegacy(userData, []);
+}
+
+export function setPrimaryAccount(userData: UserData, nextPrimaryAccount: Account) {
+  const nextAccounts = [normalizeAccount(nextPrimaryAccount), ...userData.accounts.filter((account) => account.id !== nextPrimaryAccount.id)];
+
+  return syncLegacyFromPrimaryAccount(
+    {
+      ...userData,
+      accounts: nextAccounts,
+    },
+    nextAccounts[0],
+  );
+}
+
+export function upsertAccount(userData: UserData, nextAccount: Account) {
+  const existingIndex = userData.accounts.findIndex((account) => account.id === nextAccount.id);
+  const nextAccounts =
+    existingIndex >= 0
+      ? userData.accounts.map((account) => (account.id === nextAccount.id ? normalizeAccount(nextAccount) : account))
+      : [...userData.accounts, normalizeAccount(nextAccount)];
+
+  if (existingIndex === 0 || (existingIndex === -1 && nextAccount.id === getPrimaryAccount(userData).id)) {
+    return syncLegacyFromPrimaryAccount({ ...userData, accounts: nextAccounts }, nextAccounts[0]);
+  }
+
+  return {
+    ...userData,
+    accounts: nextAccounts,
+  };
+}
+
+export function getAccount(userData: UserData, accountId: string | null | undefined) {
+  if (!accountId) return null;
+
+  return userData.accounts.find((account) => account.id === accountId) ?? null;
+}
+
+export function getActiveAccounts(userData: UserData) {
+  return userData.accounts.filter((account) => !account.archived);
+}
+
+export function getVisibleHomeAccounts(userData: UserData) {
+  return userData.accounts.filter((account) => !account.archived && account.showOnHome);
+}
+
+export function getHeroVisibleAccounts(userData: UserData) {
+  const visibleHomeAccounts = getVisibleHomeAccounts(userData);
+
+  return userData.preferences.homeHeroVisibleAccountIds
+    .map((accountId) => visibleHomeAccounts.find((account) => account.id === accountId) ?? null)
+    .filter((account): account is Account => Boolean(account));
+}
+
 export function getWallet(userData: UserData, walletId: string | null | undefined) {
   if (!walletId) return null;
 
@@ -299,16 +583,30 @@ export function getArchivedWallets(userData: UserData) {
   return userData.wallets.filter((wallet) => wallet.archived);
 }
 
+export function calculateSelectableTotalBalance(userData: UserData) {
+  const accountTotal = userData.accounts
+    .filter((account) => !account.archived && account.includeInTotal)
+    .reduce((sum, account) => sum + (account.balanceModel === "credit" ? Math.max(account.creditLimit - account.usedCredit, 0) : account.balance), 0);
+
+  const walletTotal = userData.wallets
+    .filter((wallet) => !wallet.archived && wallet.includeInTotal)
+    .reduce((sum, wallet) => sum + wallet.balance, 0);
+
+  return accountTotal + walletTotal + userData.savings;
+}
+
 export function resolveActiveAccount(userData: UserData, activeAccount: ActiveAccount) {
   if (activeAccount.kind === "main") {
+    const primaryAccount = getPrimaryAccount(userData);
+
     return {
       kind: "main" as const,
-      id: "main",
-      name: "Main Balance",
-      balance: userData.balance,
-      initialBalance: userData.initialBalance,
-      expenses: userData.expenses,
-      transactions: userData.transactions,
+      id: primaryAccount.id,
+      name: primaryAccount.name,
+      balance: primaryAccount.balance,
+      initialBalance: primaryAccount.initialBalance,
+      expenses: primaryAccount.expenses,
+      transactions: primaryAccount.transactions,
       thresholdPercentage: userData.thresholdPercentage,
       autoBudgetEnabled: true,
       budgetPeriod: userData.budgetPeriod,
@@ -321,14 +619,16 @@ export function resolveActiveAccount(userData: UserData, activeAccount: ActiveAc
   const wallet = getWallet(userData, activeAccount.walletId);
 
   if (!wallet) {
+    const primaryAccount = getPrimaryAccount(userData);
+
     return {
       kind: "main" as const,
-      id: "main",
-      name: "Main Balance",
-      balance: userData.balance,
-      initialBalance: userData.initialBalance,
-      expenses: userData.expenses,
-      transactions: userData.transactions,
+      id: primaryAccount.id,
+      name: primaryAccount.name,
+      balance: primaryAccount.balance,
+      initialBalance: primaryAccount.initialBalance,
+      expenses: primaryAccount.expenses,
+      transactions: primaryAccount.transactions,
       thresholdPercentage: userData.thresholdPercentage,
       budgetPeriod: userData.budgetPeriod,
       budgetAmount: userData.budgetAmount,

@@ -30,6 +30,7 @@ import { checkAndAllocateBudget } from "../utils/budget";
 import { convertToBaseCurrency, formatUserCurrency } from "../utils/currency";
 import {
   createDefaultUserData,
+  generateEntityId,
   getActiveWallets,
   getUserData,
   resolveActiveAccount,
@@ -342,7 +343,7 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
 
     const amountInBaseCurrency = convertToBaseCurrency(amount, userData.currencySettings);
     const transaction: Transaction = {
-      id: Date.now().toString(),
+      id: generateEntityId("money"),
       type: "add_money",
       amount: amountInBaseCurrency,
       date: new Date().toISOString(),
@@ -377,7 +378,7 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
     const newExpense: Expense = {
       ...expense,
       amount: amountInBaseCurrency,
-      id: Date.now().toString(),
+      id: generateEntityId("expense"),
       date: new Date().toISOString(),
     };
     const transaction: Transaction = {
@@ -429,10 +430,10 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
       <div className="page-shell">
         <div className="page-header">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Wallets</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Custom Wallets</p>
             <h1 className="page-title flex items-center gap-2">
               <Wallet className="h-6 w-6" />
-              Wallets
+              Custom Wallets
             </h1>
           </div>
         </div>
@@ -442,7 +443,7 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
             <div className="app-empty-state space-y-4">
             <Wallet className="mx-auto h-10 w-10 text-primary" />
               <div>
-                <p className="font-medium">No custom wallets yet</p>
+                <p className="font-medium">No Custom Wallets yet</p>
                 <p className="mt-1 text-sm text-muted-foreground">Create one for a trip, goal, or dedicated fund.</p>
               </div>
               <Button onClick={() => setShowWalletManager(true)}>Create Wallet</Button>
@@ -478,10 +479,10 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
     <div className="page-shell">
       <div className="page-header">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Wallets</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Custom Wallets</p>
           <h1 className="page-title flex items-center gap-2">
             <Wallet className="h-6 w-6" />
-            Wallets
+            Custom Wallets
           </h1>
         </div>
       </div>
@@ -548,7 +549,7 @@ export function Wallets({ username, activeAccount, onActiveAccountChange }: Wall
             </div>
           </div>
           <p className="rounded-2xl border border-border/60 bg-muted/25 px-4 py-3 text-xs leading-5 text-muted-foreground">
-            Separate from your main balance and savings.
+            Separate from your primary accounts and savings.
           </p>
         </CardContent>
       </Card>

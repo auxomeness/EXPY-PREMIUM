@@ -1,6 +1,7 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownCircle,
+  ArrowLeftRight,
   ArrowUpCircle,
   Calendar,
   ChevronDown,
@@ -13,6 +14,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { Transaction, UserData } from "../App";
+import { collectAllTransactions } from "../utils/accounts";
 import { filterTransactionsForAnalysis, isDateExempt, sortByDateDescending, startOfDay, startOfMonth, startOfWeek } from "../utils/finance";
 import { formatUserCurrency } from "../utils/currency";
 import { createDefaultUserData, getUserData, subscribeToUserData } from "../utils/userData";
@@ -26,6 +28,25 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 type ExpenseHistoryProps = {
   username: string;
 };
+
+function formatHistorySummaryAmount(amount: number, currencySettings: UserData["currencySettings"]) {
+  const absoluteAmount = Math.abs(amount);
+  const sign = amount >= 0 ? "+" : "-";
+  const currencySymbol = formatUserCurrency(0, currencySettings).replace(/[0-9.,\s]/g, "") || currencySettings.baseCurrency;
+
+  if (absoluteAmount >= 1_000_000) {
+    const compactMillions = absoluteAmount >= 10_000_000
+      ? Math.round(absoluteAmount / 1_000_000).toString()
+      : (absoluteAmount / 1_000_000).toFixed(1).replace(/\.0$/, "");
+    return `${sign}${currencySymbol}${compactMillions}M`;
+  }
+
+  if (absoluteAmount >= 100_000) {
+    return `${sign}${formatUserCurrency(absoluteAmount, currencySettings).replace(/\.00$/, "")}`;
+  }
+
+  return `${sign}${formatUserCurrency(absoluteAmount, currencySettings)}`;
+}
 
 const transactionTypeInfo = {
   expense: {
@@ -51,6 +72,24 @@ const transactionTypeInfo = {
     icon: ArrowDownCircle,
     color: "text-orange-600 dark:text-orange-400",
     sign: "+",
+  },
+  transfer_in: {
+    label: "Transfer In",
+    icon: ArrowDownCircle,
+    color: "text-sky-600 dark:text-sky-400",
+    sign: "+",
+  },
+  transfer_out: {
+    label: "Transfer Out",
+    icon: ArrowLeftRight,
+    color: "text-violet-600 dark:text-violet-400",
+    sign: "-",
+  },
+  credit_payment: {
+    label: "Credit Card Payment",
+    icon: ArrowLeftRight,
+    color: "text-emerald-600 dark:text-emerald-400",
+    sign: "-",
   },
 } satisfies Record<Transaction["type"], {
   label: string;
@@ -96,6 +135,12 @@ function getTransactionTitle(transaction: Transaction) {
       return "Moved To Savings";
     case "withdraw_savings":
       return "Savings Withdrawal";
+    case "transfer_in":
+      return transaction.destinationName || transaction.description || "Transfer In";
+    case "transfer_out":
+      return transaction.destinationName ? `Transfer to ${transaction.destinationName}` : "Transfer Out";
+    case "credit_payment":
+      return transaction.destinationName ? `Card payment to ${transaction.destinationName}` : "Credit Card Payment";
   }
 }
 
@@ -113,6 +158,9 @@ const TYPE_OPTIONS = [
   { value: "add_money", label: "Add Money" },
   { value: "add_savings", label: "To Savings" },
   { value: "withdraw_savings", label: "Withdraw" },
+  { value: "transfer_out", label: "Transfer Out" },
+  { value: "transfer_in", label: "Transfer In" },
+  { value: "credit_payment", label: "Card Payment" },
 ];
 
 export function ExpenseHistory({ username }: ExpenseHistoryProps) {
@@ -136,7 +184,7 @@ export function ExpenseHistory({ username }: ExpenseHistoryProps) {
   const range = useMemo(() => getDateRange(filterPeriod), [filterPeriod]);
 
   const transactionsInPeriod = useMemo(() => {
-    const sortedTransactions = sortByDateDescending(userData.transactions);
+    const sortedTransactions = sortByDateDescending(collectAllTransactions(userData));
 
     return sortedTransactions.filter((transaction) => {
       const transactionDate = new Date(transaction.date);
@@ -215,11 +263,11 @@ export function ExpenseHistory({ username }: ExpenseHistoryProps) {
   );
 
   const totalIncome = analysisTransactions
-    .filter((transaction) => transaction.type === "add_money" || transaction.type === "withdraw_savings")
+    .filter((transaction) => transaction.type === "add_money" || transaction.type === "withdraw_savings" || transaction.type === "transfer_in")
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
   const totalExpenses = analysisTransactions
-    .filter((transaction) => transaction.type === "expense" || transaction.type === "add_savings")
+    .filter((transaction) => transaction.type === "expense" || transaction.type === "add_savings" || transaction.type === "transfer_out" || transaction.type === "credit_payment")
     .reduce((sum, transaction) => sum + transaction.amount, 0);
 
   const exemptTransactionCount = filteredTransactions.length - analysisTransactions.length;
@@ -255,20 +303,19 @@ export function ExpenseHistory({ username }: ExpenseHistoryProps) {
             <div className="px-3 py-3 text-center">
               <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Income</p>
               <p className="summary-amount mt-1 text-green-600 dark:text-green-400">
-                +{formatUserCurrency(totalIncome, userData.currencySettings)}
+                {formatHistorySummaryAmount(totalIncome, userData.currencySettings)}
               </p>
             </div>
             <div className="border-x border-border/60 px-3 py-3 text-center">
               <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Expenses</p>
               <p className="summary-amount mt-1 text-red-600 dark:text-red-400">
-                -{formatUserCurrency(totalExpenses, userData.currencySettings)}
+                {formatHistorySummaryAmount(-totalExpenses, userData.currencySettings)}
               </p>
             </div>
             <div className="px-3 py-3 text-center">
               <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Net Flow</p>
               <p className={`summary-amount mt-1 ${netFlow >= 0 ? "text-green-600 dark:text-green-400" : "text-red-600 dark:text-red-400"}`}>
-                {netFlow >= 0 ? "+" : ""}
-                {formatUserCurrency(netFlow, userData.currencySettings)}
+                {formatHistorySummaryAmount(netFlow, userData.currencySettings)}
               </p>
             </div>
           </div>
@@ -389,7 +436,7 @@ export function ExpenseHistory({ username }: ExpenseHistoryProps) {
         </Card>
       ) : (
         <div className="space-y-2.5">
-          {filteredTransactions.map((transaction) => {
+          {filteredTransactions.map((transaction, index) => {
             const typeInfo = transactionTypeInfo[transaction.type];
             const Icon = typeInfo.icon;
             const exempt = isDateExempt(transaction.date, userData.computationExemptions);
@@ -402,8 +449,8 @@ export function ExpenseHistory({ username }: ExpenseHistoryProps) {
               exempt ? "Exempted day" : "",
             ].filter(Boolean);
 
-            return (
-              <div key={transaction.id} className="app-list-row">
+            const rowContent = (
+              <div className="app-list-row bg-card">
                 <div className="flex items-start gap-3">
                   <div className="app-list-icon">
                     <Icon className="h-[18px] w-[18px] text-muted-foreground" />
@@ -443,6 +490,8 @@ export function ExpenseHistory({ username }: ExpenseHistoryProps) {
                 </div>
               </div>
             );
+
+            return <div key={`${transaction.id}-${transaction.date}-${index}`}>{rowContent}</div>;
           })}
         </div>
       )}

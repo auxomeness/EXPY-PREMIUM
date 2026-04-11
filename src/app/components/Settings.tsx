@@ -7,6 +7,7 @@ import {
   Lock,
   LogOut,
   Moon,
+  Palette,
   RefreshCcw,
   Settings2,
   Sun,
@@ -18,6 +19,16 @@ import {
 import { toast } from "sonner";
 import type { ActiveAccount, BudgetPeriod, SupportedCurrency, UserData } from "../App";
 import { isDateExempt } from "../utils/finance";
+import { MAX_QUICK_ACTIONS, QUICK_ACTION_OPTIONS } from "../utils/quickActions";
+import {
+  DEFAULT_ACCENT_HUE,
+  applyColorMode,
+  getAccentHexFromHue,
+  getAccentHueFromHex,
+  isDarkModeEnabled,
+  normalizeAccentHex,
+  subscribeToColorMode,
+} from "../utils/theme";
 import {
   SUPPORTED_CURRENCIES,
   applyExchangeRateUpdate,
@@ -32,6 +43,7 @@ import {
 import {
   createDefaultUserData,
   getActiveWallets,
+  getVisibleHomeAccounts,
   getStoredUsers,
   getUserData,
   saveUserData,
@@ -62,6 +74,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Separator } from "./ui/separator";
+import { Slider } from "./ui/slider";
 import { Switch } from "./ui/switch";
 import { cn } from "./ui/utils";
 
@@ -126,6 +139,8 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
   const [notificationPermission, setNotificationPermission] = useState<NotificationPermission>("default");
   const [isChangingUsername, setIsChangingUsername] = useState(false);
   const [isRefreshingRates, setIsRefreshingRates] = useState(false);
+  const [accentHexInput, setAccentHexInput] = useState("");
+  const [accentHue, setAccentHue] = useState(DEFAULT_ACCENT_HUE);
 
   useEffect(() => {
     const currentUserData = getUserData(username) ?? createDefaultUserData(username);
@@ -141,6 +156,12 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
     setBudgetAmount(convertFromBaseCurrency(userData.budgetAmount, userData.currencySettings).toFixed(2));
     setDisplayName(userData.displayName || "");
     setDayEndTime(userData.dayEndTime || "22:00");
+    setAccentHexInput(userData.preferences.themeAccentHex);
+    setAccentHue(
+      userData.preferences.themeAccentHex
+        ? getAccentHueFromHex(userData.preferences.themeAccentHex)
+        : DEFAULT_ACCENT_HUE,
+    );
 
     const preferredCurrency = userData.currencySettings.preferredCurrency;
     const rate =
@@ -151,20 +172,20 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
   }, [userData]);
 
   useEffect(() => {
-    const darkMode = localStorage.getItem("expy_dark_mode") === "true";
+    const darkMode = isDarkModeEnabled();
     setIsDarkMode(darkMode);
-    if (darkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
 
     if ("Notification" in window) {
       setNotificationPermission(Notification.permission);
     }
+
+    return subscribeToColorMode((nextDarkMode) => {
+      setIsDarkMode(nextDarkMode);
+    });
   }, []);
 
   const activeWallets = useMemo(() => getActiveWallets(userData), [userData]);
+  const visibleHomeAccounts = useMemo(() => getVisibleHomeAccounts(userData), [userData]);
   const selectedWalletForBudget = useMemo(
     () => activeWallets.find((wallet) => wallet.id === selectedWalletBudgetId) ?? null,
     [activeWallets, selectedWalletBudgetId],
@@ -180,6 +201,39 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
   const liveRate = userData.currencySettings.exchangeRates[preferredCurrency];
   const manualRateOverride = userData.currencySettings.manualExchangeRates[preferredCurrency];
   const isGoogleAuth = userData.authProvider === "google";
+
+  const toggleHeroSwipe = (checked: boolean) => {
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      preferences: {
+        ...currentUserData.preferences,
+        homeHeroSwipeEnabled: checked,
+      },
+    }));
+    toast.success(`Hero swipe ${checked ? "enabled" : "disabled"}`);
+  };
+
+  const toggleHeroAccountVisibility = (accountId: string, checked: boolean) => {
+    updateUserData(username, (currentUserData) => {
+      const nextVisibleAccountIds = checked
+        ? Array.from(new Set([...currentUserData.preferences.homeHeroVisibleAccountIds, accountId]))
+        : currentUserData.preferences.homeHeroVisibleAccountIds.filter((id) => id !== accountId);
+
+      const fallbackHeroAccountId =
+        nextVisibleAccountIds[0] || currentUserData.preferences.homeSelectedAccountId;
+
+      return {
+        ...currentUserData,
+        preferences: {
+          ...currentUserData.preferences,
+          homeHeroVisibleAccountIds: nextVisibleAccountIds,
+          homeSelectedAccountId: nextVisibleAccountIds.includes(currentUserData.preferences.homeSelectedAccountId)
+            ? currentUserData.preferences.homeSelectedAccountId
+            : fallbackHeroAccountId,
+        },
+      };
+    });
+  };
 
   useEffect(() => {
     if (activeWallets.length === 0) {
@@ -259,15 +313,82 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
   const toggleDarkMode = () => {
     const nextDarkMode = !isDarkMode;
     setIsDarkMode(nextDarkMode);
-    localStorage.setItem("expy_dark_mode", String(nextDarkMode));
-
-    if (nextDarkMode) {
-      document.documentElement.classList.add("dark");
-    } else {
-      document.documentElement.classList.remove("dark");
-    }
+    applyColorMode(nextDarkMode);
 
     toast.success(`${nextDarkMode ? "Dark" : "Light"} mode enabled`);
+  };
+
+  const savedAccentHex = userData.preferences.themeAccentHex;
+  const normalizedAccentInput = normalizeAccentHex(accentHexInput);
+  const previewAccentHex = normalizedAccentInput ?? savedAccentHex ?? getAccentHexFromHue(accentHue);
+  const canApplyAccentHex = Boolean(normalizedAccentInput && normalizedAccentInput !== savedAccentHex);
+  const hasCustomAccent = savedAccentHex.length > 0;
+
+  const persistAccentTheme = (nextAccentHex: string) => {
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      preferences: {
+        ...currentUserData.preferences,
+        themeAccentHex: nextAccentHex,
+      },
+    }));
+  };
+
+  const handleAccentSliderChange = (values: number[]) => {
+    const nextHue = values[0] ?? DEFAULT_ACCENT_HUE;
+    setAccentHue(nextHue);
+    setAccentHexInput(getAccentHexFromHue(nextHue));
+  };
+
+  const handleAccentSliderCommit = (values: number[]) => {
+    const nextHue = values[0] ?? DEFAULT_ACCENT_HUE;
+    const nextAccentHex = getAccentHexFromHue(nextHue);
+
+    setAccentHue(nextHue);
+    setAccentHexInput(nextAccentHex);
+    persistAccentTheme(nextAccentHex);
+    toast.success("Accent theme updated");
+  };
+
+  const handleAccentHexApply = () => {
+    if (!normalizedAccentInput) {
+      toast.error("Enter a valid hex color like #2563eb");
+      return;
+    }
+
+    setAccentHexInput(normalizedAccentInput);
+    setAccentHue(getAccentHueFromHex(normalizedAccentInput));
+    persistAccentTheme(normalizedAccentInput);
+    toast.success("Custom accent saved");
+  };
+
+  const handleAccentReset = () => {
+    setAccentHexInput("");
+    setAccentHue(DEFAULT_ACCENT_HUE);
+    persistAccentTheme("");
+    toast.success("Accent reset to default");
+  };
+
+  const toggleQuickAction = (actionId: import("../App").QuickActionId) => {
+    const selected = userData.preferences.quickActionIds;
+    const isSelected = selected.includes(actionId);
+
+    if (!isSelected && selected.length >= MAX_QUICK_ACTIONS) {
+      toast.error(`Choose up to ${MAX_QUICK_ACTIONS} quick actions.`);
+      return;
+    }
+
+    updateUserData(username, (currentUserData) => ({
+      ...currentUserData,
+      preferences: {
+        ...currentUserData.preferences,
+        quickActionIds: isSelected
+          ? currentUserData.preferences.quickActionIds.filter((id) => id !== actionId)
+          : [...currentUserData.preferences.quickActionIds, actionId],
+      },
+    }));
+
+    toast.success(isSelected ? "Quick action removed" : "Quick action added");
   };
 
   const handleDisplayNameChange = () => {
@@ -605,19 +726,229 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
           value="appearance"
           title="Appearance"
           subtitle="Theme and display preferences."
-          badge={<Badge variant="secondary">{isDarkMode ? "Dark" : "Light"}</Badge>}
+          badge={<Badge variant="secondary">{hasCustomAccent ? "Custom Accent" : isDarkMode ? "Dark" : "Light"}</Badge>}
         >
-          <div className="app-list-row flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              {isDarkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
-              <div>
-                <p className="app-list-title">Dark Mode</p>
-                <p className="app-list-meta">{isDarkMode ? "Enabled" : "Disabled"}</p>
+          <div className="space-y-5">
+            <div className="app-list-row flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                {isDarkMode ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
+                <div>
+                  <p className="app-list-title">Dark Mode</p>
+                  <p className="app-list-meta">{isDarkMode ? "Enabled" : "Disabled"}</p>
+                </div>
+              </div>
+              <Button onClick={toggleDarkMode} variant="outline">
+                {isDarkMode ? "Disable" : "Enable"}
+              </Button>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/15 shadow-[0_20px_40px_-26px_rgba(15,23,42,0.5)]"
+                    style={{
+                      background: `linear-gradient(135deg, ${previewAccentHex} 0%, color-mix(in srgb, ${previewAccentHex} 72%, white) 100%)`,
+                    }}
+                  >
+                    <Palette className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <p className="app-list-title">Custom Accent</p>
+                    <p className="app-list-meta">Pick one accent color for light mode and dark mode.</p>
+                  </div>
+                </div>
+                <Button onClick={handleAccentReset} variant="ghost" size="sm" disabled={!hasCustomAccent && accentHexInput.length === 0}>
+                  Reset
+                </Button>
+              </div>
+
+              <div className="rounded-[24px] border border-border/70 bg-background/80 p-4 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.28)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold tracking-[-0.01em] text-foreground">Accent Preview</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {hasCustomAccent ? "Your saved accent is live across buttons, chips, and navigation." : "Default graphite is active until you save a custom accent."}
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-border/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                    {hasCustomAccent ? savedAccentHex.toUpperCase() : "Default"}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] gap-3">
+                  <div className="rounded-[22px] px-4 py-4 text-white shadow-[0_18px_36px_-24px_rgba(15,23,42,0.5)]"
+                    style={{
+                      background: `linear-gradient(135deg, ${previewAccentHex} 0%, color-mix(in srgb, ${previewAccentHex} 76%, black) 100%)`,
+                    }}
+                  >
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/72">Preview</p>
+                    <p className="mt-2 text-lg font-semibold tracking-[-0.03em]">Buttons and highlights</p>
+                    <p className="mt-1 text-sm text-white/80">This accent replaces the default black highlight across the app.</p>
+                  </div>
+                  <div className="flex flex-col justify-between rounded-[22px] border border-border/70 bg-card/90 p-3">
+                    <div className="h-12 w-12 rounded-2xl border border-black/5"
+                      style={{ backgroundColor: previewAccentHex }}
+                    />
+                    <p className="mt-3 text-right text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                      {previewAccentHex.toUpperCase()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-[24px] border border-border/70 bg-card/92 p-4 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.22)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold tracking-[-0.01em] text-foreground">Hue Slider</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">Drag to generate a color, then release to save it.</p>
+                  </div>
+                  <div className="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground"
+                    style={{ backgroundColor: `${previewAccentHex}18`, color: previewAccentHex }}
+                  >
+                    {Math.round(accentHue)}°
+                  </div>
+                </div>
+                <div
+                  className="rounded-full p-[3px]"
+                  style={{
+                    background:
+                      "linear-gradient(90deg, #ef4444 0%, #f59e0b 16%, #eab308 32%, #22c55e 48%, #06b6d4 64%, #3b82f6 80%, #a855f7 100%)",
+                  }}
+                >
+                  <div className="rounded-full bg-background/88 px-3 py-3 backdrop-blur-sm">
+                    <Slider
+                      value={[accentHue]}
+                      min={0}
+                      max={360}
+                      step={1}
+                      onValueChange={handleAccentSliderChange}
+                      onValueCommit={handleAccentSliderCommit}
+                      className="[&_[data-slot=slider-thumb]]:border-background [&_[data-slot=slider-track]]:bg-transparent [&_[data-slot=slider-range]]:bg-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-[24px] border border-border/70 bg-card/92 p-4 shadow-[0_18px_40px_-32px_rgba(15,23,42,0.22)]">
+                <div>
+                  <p className="text-sm font-semibold tracking-[-0.01em] text-foreground">Hex Input</p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">Paste an exact hex if you already know the color you want.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="h-11 w-11 rounded-2xl border border-border/70"
+                    style={{ backgroundColor: previewAccentHex }}
+                  />
+                  <Input
+                    value={accentHexInput}
+                    onChange={(event) => setAccentHexInput(event.target.value)}
+                    placeholder="#2563eb"
+                    spellCheck={false}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    maxLength={7}
+                    className="h-11 rounded-2xl"
+                  />
+                  <Button onClick={handleAccentHexApply} disabled={!canApplyAccentHex}>
+                    Apply
+                  </Button>
+                </div>
+                {accentHexInput.length > 0 && !normalizedAccentInput ? (
+                  <p className="text-xs text-destructive">Use a 3-digit or 6-digit hex value, like #0ea5e9 or #2563eb.</p>
+                ) : null}
+                <div>
+                  <p className="text-xs leading-5 text-muted-foreground">The saved accent overrides the app’s default graphite highlight in both themes.</p>
+                </div>
               </div>
             </div>
-            <Button onClick={toggleDarkMode} variant="outline">
-              {isDarkMode ? "Disable" : "Enable"}
-            </Button>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          value="quick-actions"
+          title="Quick Actions"
+          subtitle="Choose up to five shortcuts for the floating quick action button."
+          badge={<Badge variant="secondary">{userData.preferences.quickActionIds.length}/{MAX_QUICK_ACTIONS}</Badge>}
+        >
+          <div className="space-y-4">
+            <p className="text-sm leading-6 text-muted-foreground">Tap to add or remove actions. Your selected order is the order shown in the quick action drawer.</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {QUICK_ACTION_OPTIONS.map((option) => {
+                const selected = userData.preferences.quickActionIds.includes(option.id);
+                const disabled = !selected && userData.preferences.quickActionIds.length >= MAX_QUICK_ACTIONS;
+                const Icon = option.icon;
+
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => toggleQuickAction(option.id)}
+                    disabled={disabled}
+                    className={cn(
+                      "app-list-row flex items-start gap-3 text-left transition-colors",
+                      selected ? "border-foreground bg-foreground text-background" : "hover:bg-accent/30",
+                      disabled && "cursor-not-allowed opacity-55",
+                    )}
+                  >
+                    <div className={cn("app-list-icon", selected && "border-white/14 bg-white/10 text-background")}>
+                      <Icon className="h-5 w-5" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className={cn("app-list-title", selected && "text-background")}>{option.label}</p>
+                      <p className={cn("app-list-meta", selected && "text-background/72")}>{option.description}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          value="hero"
+          title="Home Hero"
+          subtitle="Choose whether swipe is enabled and which cards are allowed in the hero sequence."
+          badge={<Badge variant="secondary">{visibleHomeAccounts.length} card{visibleHomeAccounts.length === 1 ? "" : "s"}</Badge>}
+        >
+          <div className="space-y-5">
+            <div className="app-list-row flex items-center justify-between gap-4">
+              <div>
+                <p className="app-list-title">Hero swipe</p>
+                <p className="app-list-meta">Cycle through the home hero cards with horizontal swipe.</p>
+              </div>
+              <Switch
+                checked={userData.preferences.homeHeroSwipeEnabled}
+                onCheckedChange={toggleHeroSwipe}
+              />
+            </div>
+
+            <Separator />
+
+            <div className="space-y-3">
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Hero Cards</p>
+              {visibleHomeAccounts.length === 0 ? (
+                <div className="app-empty-state text-sm text-muted-foreground">
+                  Turn on Show on home for an account first, then it can appear in the hero sequence.
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {visibleHomeAccounts.map((account) => (
+                    <div key={account.id} className="app-list-row flex items-center justify-between gap-4">
+                      <div>
+                        <p className="app-list-title">{account.name}</p>
+                        <p className="app-list-meta">{account.accountType.replace(/_/g, " ")}</p>
+                      </div>
+                      <Switch
+                        checked={userData.preferences.homeHeroVisibleAccountIds.includes(account.id)}
+                        onCheckedChange={(checked) => toggleHeroAccountVisibility(account.id, checked)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         </SettingsSection>
 
@@ -769,13 +1100,13 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
 
         <SettingsSection
           value="wallets"
-          title="Wallets & Exemptions"
-          subtitle="Independent wallet controls and excluded days."
+          title="Custom Wallets & Exemptions"
+          subtitle="Independent Custom Wallet controls and excluded days."
           badge={<Badge variant="secondary">{activeWallets.length} wallet{activeWallets.length === 1 ? "" : "s"}</Badge>}
         >
           <div className="space-y-5">
             <div className="space-y-3">
-              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Wallet Management</p>
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Custom Wallet Management</p>
               <div className="app-list-row flex items-center justify-between gap-4">
                 <div>
                   <p className="app-list-title">Currently active</p>
@@ -790,10 +1121,10 @@ export function Settings({ username, onLogout, activeAccount, onOpenWallet }: Se
             <Separator />
 
             <div className="space-y-3">
-              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Wallet Budget</p>
+              <p className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Custom Wallet Budget</p>
               {activeWallets.length === 0 ? (
                 <div className="app-empty-state text-sm text-muted-foreground">
-                  Create a wallet first to manage its auto budget.
+                  Create a Custom Wallet first to manage its auto budget.
                 </div>
               ) : (
                 <>

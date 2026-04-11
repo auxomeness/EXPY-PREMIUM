@@ -18,6 +18,9 @@ type AddExpenseDialogProps = {
   onManageCategories: () => void;
   currencySettings: CurrencySettings;
   accountLabel?: string;
+  title?: string;
+  description?: string;
+  submitLabel?: string;
 };
 
 const DEFAULT_CATEGORIES = ["leisure", "bills", "transportation", "food", "other"];
@@ -33,6 +36,9 @@ export function AddExpenseDialog({
   onManageCategories,
   currencySettings,
   accountLabel = "balance",
+  title = "Add Expense",
+  description: dialogDescription,
+  submitLabel = "Add Expense",
 }: AddExpenseDialogProps) {
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<string>("food");
@@ -72,8 +78,8 @@ export function AddExpenseDialog({
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Add Expense</DrawerTitle>
-          <DrawerDescription>Record a new expense for this balance.</DrawerDescription>
+          <DrawerTitle>{title}</DrawerTitle>
+          <DrawerDescription>{dialogDescription ?? `Record a new expense for ${accountLabel}.`}</DrawerDescription>
         </DrawerHeader>
         <form onSubmit={handleSubmit} className="space-y-4 px-5 pb-2">
           <div className="space-y-2">
@@ -138,7 +144,7 @@ export function AddExpenseDialog({
                 Cancel
               </Button>
               <Button type="submit" className="flex-1">
-                Add Expense
+                {submitLabel}
               </Button>
             </div>
           </DrawerFooter>

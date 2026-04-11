@@ -6,6 +6,7 @@ import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, D
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import { Switch } from "./ui/switch";
 import { convertFromBaseCurrency, convertToBaseCurrency, formatCurrency, formatUserCurrency } from "../utils/currency";
 import { createEmptyWallet } from "../utils/userData";
 import { toast } from "sonner";
@@ -25,6 +26,8 @@ const DEFAULT_FORM_STATE = {
   budgetAmount: "",
   thresholdPercentage: "20",
   budgetPeriod: "monthly" as BudgetPeriod,
+  includeInTotal: false,
+  showOnHome: false,
 };
 
 export function WalletManagerDialog({
@@ -105,6 +108,8 @@ export function WalletManagerDialog({
                 budgetAmount: budgetAmountInBaseCurrency,
                 thresholdPercentage: parsedThreshold,
                 budgetPeriod: formState.budgetPeriod,
+                includeInTotal: formState.includeInTotal,
+                showOnHome: formState.showOnHome,
                 updatedAt: now,
               }
             : wallet,
@@ -119,6 +124,8 @@ export function WalletManagerDialog({
             budgetAmount: budgetAmountInBaseCurrency,
             thresholdPercentage: parsedThreshold,
             budgetPeriod: formState.budgetPeriod,
+            includeInTotal: formState.includeInTotal,
+            showOnHome: formState.showOnHome,
             createdAt: now,
             updatedAt: now,
           },
@@ -137,6 +144,8 @@ export function WalletManagerDialog({
       budgetAmount: convertFromBaseCurrency(wallet.budgetAmount, currencySettings).toFixed(2),
       thresholdPercentage: wallet.thresholdPercentage.toString(),
       budgetPeriod: wallet.budgetPeriod,
+      includeInTotal: wallet.includeInTotal,
+      showOnHome: wallet.showOnHome,
     });
   };
 
@@ -172,6 +181,9 @@ export function WalletManagerDialog({
         </p>
         <p className="text-xs text-muted-foreground">
           Budget {formatUserCurrency(wallet.budgetAmount, currencySettings)} • {wallet.budgetPeriod}
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {wallet.includeInTotal ? "Included in total balance" : "Excluded from total balance"} • {wallet.showOnHome ? "Visible on home" : "Hidden on home"}
         </p>
       </div>
 
@@ -209,9 +221,9 @@ export function WalletManagerDialog({
     <Drawer open={open} onOpenChange={onOpenChange}>
       <DrawerContent>
         <DrawerHeader>
-          <DrawerTitle>Manage Wallets</DrawerTitle>
+          <DrawerTitle>Manage Custom Wallets</DrawerTitle>
           <DrawerDescription>
-            Create separate wallets without affecting your main balance or savings.
+            Create separate purpose-based wallets without affecting your primary accounts or savings by default.
           </DrawerDescription>
         </DrawerHeader>
 
@@ -219,7 +231,7 @@ export function WalletManagerDialog({
           <form onSubmit={handleSubmit} className="space-y-4 rounded-[24px] border border-border/70 bg-card/70 p-4">
             <div className="flex items-center gap-2">
               <PlusCircle className="h-4 w-4 text-primary" />
-              <h3 className="text-sm font-medium">{editingWalletId ? "Edit wallet" : "Create wallet"}</h3>
+              <h3 className="text-sm font-medium">{editingWalletId ? "Edit Custom Wallet" : "Create Custom Wallet"}</h3>
             </div>
 
             <div className="space-y-2">
@@ -308,6 +320,40 @@ export function WalletManagerDialog({
               </div>
             </div>
 
+            <div className="space-y-3 rounded-[22px] border border-border/65 bg-background/80 px-4 py-4">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="app-list-title">Include in total balance</p>
+                  <p className="app-list-meta">Off by default so Custom Wallets stay separate from account totals.</p>
+                </div>
+                <Switch
+                  checked={formState.includeInTotal}
+                  onCheckedChange={(checked) =>
+                    setFormState((currentState) => ({
+                      ...currentState,
+                      includeInTotal: checked,
+                    }))
+                  }
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <p className="app-list-title">Show on home</p>
+                  <p className="app-list-meta">Allow this Custom Wallet to appear in future home displays.</p>
+                </div>
+                <Switch
+                  checked={formState.showOnHome}
+                  onCheckedChange={(checked) =>
+                    setFormState((currentState) => ({
+                      ...currentState,
+                      showOnHome: checked,
+                    }))
+                  }
+                />
+              </div>
+            </div>
+
             <div className="flex gap-2">
               {editingWalletId && (
                 <Button type="button" variant="outline" className="flex-1" onClick={resetForm}>
@@ -315,7 +361,7 @@ export function WalletManagerDialog({
                 </Button>
               )}
               <Button type="submit" className="flex-1">
-                {editingWalletId ? "Save Wallet" : "Create Wallet"}
+                {editingWalletId ? "Save Custom Wallet" : "Create Custom Wallet"}
               </Button>
             </div>
           </form>
@@ -324,14 +370,14 @@ export function WalletManagerDialog({
             <div className="flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-sm font-medium">
                 <Wallet className="h-4 w-4 text-primary" />
-                Active wallets
+                Active Custom Wallets
               </h3>
               <span className="text-xs text-muted-foreground">{activeWallets.length}</span>
             </div>
 
             {activeWallets.length === 0 ? (
               <div className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-                No custom wallets yet. Create one for a trip, event, sinking fund, or any dedicated pocket of money.
+                No Custom Wallets yet. Create one for a trip, event, sinking fund, or any dedicated pocket of money.
               </div>
             ) : (
               <div className="space-y-2">{activeWallets.map(renderWalletRow)}</div>
@@ -340,7 +386,7 @@ export function WalletManagerDialog({
 
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-medium">Archived wallets</h3>
+              <h3 className="text-sm font-medium">Archived Custom Wallets</h3>
               <span className="text-xs text-muted-foreground">{archivedWallets.length}</span>
             </div>
 
