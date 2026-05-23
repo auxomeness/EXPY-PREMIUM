@@ -2,9 +2,8 @@ import type { Account, Expense, Transaction, UserData } from "../App";
 import { createDefaultCurrencySettings, createDefaultUserData } from "./userData";
 
 const DEMO_USERNAME = "demouser";
-const DEMO_PASSWORD = "Demo@123";
-const ADMIN_USERNAME = "admin";
-const ADMIN_PASSWORD = "password";
+const DEMO_ACCOUNT_ENABLED = import.meta.env.DEV && import.meta.env.VITE_ENABLE_DEMO_ACCOUNT === "true";
+const DEMO_PASSWORD = import.meta.env.VITE_DEMO_PASSWORD || "";
 
 function buildDemoAccounts(timestamp: string): Account[] {
   return [
@@ -121,19 +120,6 @@ function buildDemoUserData(today: Date, expenses: Expense[], transactions: Trans
   };
 }
 
-function buildAdminUserData(): UserData {
-  const defaults = createDefaultUserData(ADMIN_USERNAME, ADMIN_PASSWORD);
-
-  return {
-    ...defaults,
-    displayName: "Admin",
-    preferences: {
-      ...defaults.preferences,
-      homeHeroMode: "selected_account",
-    },
-  };
-}
-
 function shouldRefreshDemoAccounts(existingUser: UserData | undefined) {
   if (!existingUser) {
     return true;
@@ -158,13 +144,13 @@ function shouldRefreshDemoAccounts(existingUser: UserData | undefined) {
 export function createDemoAccount() {
   const users = JSON.parse(localStorage.getItem("expy_users") || "{}");
 
-  if (!users[ADMIN_USERNAME] || users[ADMIN_USERNAME].password !== ADMIN_PASSWORD) {
-    users[ADMIN_USERNAME] = buildAdminUserData();
+  if (!DEMO_ACCOUNT_ENABLED || !DEMO_PASSWORD) {
+    localStorage.setItem("expy_users", JSON.stringify(users));
+    return null;
   }
 
   if (users[DEMO_USERNAME] && !shouldRefreshDemoAccounts(users[DEMO_USERNAME])) {
     localStorage.setItem("expy_users", JSON.stringify(users));
-    console.log("Demo account already exists");
     return { username: DEMO_USERNAME, password: DEMO_PASSWORD };
   }
 
@@ -256,10 +242,6 @@ export function createDemoAccount() {
 
   users[DEMO_USERNAME] = demoUser;
   localStorage.setItem("expy_users", JSON.stringify(users));
-
-  console.log("Demo account created successfully!");
-  console.log("Username:", DEMO_USERNAME);
-  console.log("Password:", DEMO_PASSWORD);
 
   return { username: DEMO_USERNAME, password: DEMO_PASSWORD };
 }

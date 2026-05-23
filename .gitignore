@@ -1,3 +1,13 @@
 node_modules/
 dist/
 .vercel/
+.env
+.env.local
+.env.*.local
+.DS_Store
+.idea/
+client_secret*.json
+*client_secret*.json
+*.pem
+*.p12
+*.key

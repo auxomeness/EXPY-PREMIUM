@@ -1,6 +1,3 @@
-const DEFAULT_GOOGLE_CLIENT_ID =
-  "734017015749-jg7245u08a076soic9eu70laifa83pk1.apps.googleusercontent.com";
-
 const GOOGLE_SCRIPT_ID = "expy-google-identity";
 const GOOGLE_SCRIPT_SRC = "https://accounts.google.com/gsi/client";
 const GOOGLE_USERINFO_ENDPOINT = "https://openidconnect.googleapis.com/v1/userinfo";
@@ -47,7 +44,13 @@ declare global {
 }
 
 function getGoogleClientId() {
-  return DEFAULT_GOOGLE_CLIENT_ID;
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+  if (!clientId) {
+    throw new Error("Google client ID is not configured");
+  }
+
+  return clientId;
 }
 
 async function fetchGoogleProfile(accessToken: string) {

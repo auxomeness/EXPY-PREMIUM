@@ -321,7 +321,7 @@ export default function App() {
   const [showQuickAddMoney, setShowQuickAddMoney] = useState(false);
   const [showQuickAddExpense, setShowQuickAddExpense] = useState(false);
   const [showQuickAddSavings, setShowQuickAddSavings] = useState(false);
-  const isAdminUser = currentUser === "admin";
+  const isAdminUser = import.meta.env.DEV && currentUser === "admin";
 
   useEffect(() => {
     // Migrate existing user data to new schema
